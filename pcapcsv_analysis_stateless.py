@@ -20,10 +20,10 @@ import json
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
 files = []  # leave empty, for automatic file name appending
-no_files = 11
-filename = 'csv5gpython_'
+no_files = 10
+filename = 'csv4gpython_'
 extension = '.csv'
-BANDWIDTH = 5
+BANDWIDTH = 4
 TOP_BW_AXIS = BANDWIDTH + 1
 BOTTOM_BW_AXIS = BANDWIDTH - 1
 desired_df_columns = ['Time since first frame in this TCP stream',
@@ -41,8 +41,8 @@ ms_scale_factor = 1000
 kbps_scale_factor = 1000
 stream_index = 1
 
-#remove_from_plot = [5, 6, 7, 9]
-remove_from_plot = []
+remove_from_plot = [2,5,6]
+#remove_from_plot = []
 '''
 define functions
 '''
@@ -133,11 +133,13 @@ for i, df in enumerate(df_array):
 plt.title(filename + " - RTT")
 plt.xlabel("t (s)")
 plt.ylabel("RTT (ms)")
+plt.ylim(top=0.2, bottom=0)
+plt.xlim(right=60, left=1)
 plt.grid('on')
-plt.legend()
+plt.legend(loc='upper right')
 
 # -----------------------------------
-# plot TCP segment length
+# plot TCP segment length - SMA 1 second
 # -----------------------------------
 plt.figure()
 # plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['TCP Segment Len'].rolling(1000).mean()))
@@ -149,14 +151,37 @@ for i, df in enumerate(df_array):
             (df[df['Time since first frame in this TCP stream'].notna()]['TCP Segment Len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
             label=files_array[i]
         )
-plt.title(filename + " - TCP segment length (bits)")
+plt.title(filename + " - TCP segment length")
 plt.xlabel("t (s)")
 plt.grid('on')
 plt.ylim(top=60, bottom=0)
+plt.xlim(right=60, left=0)
 plt.ylabel("TCP Segment len (KBytes)")
 plt.grid('on')
-plt.legend()
+plt.legend(loc='lower left')
 
+
+# -----------------------------------
+# plot TCP segment length raw data
+# -----------------------------------
+plt.figure()
+# plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['TCP Segment Len'].rolling(1000).mean()))
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.scatter(df['Time since first frame in this TCP stream'], (df['TCP Segment Len']), label='test ' + str(i))
+        #plt.plot(
+        #    df[df['Time since first frame in this TCP stream'].notna()]['Time since first frame in this TCP stream'],
+        #    (df[df['Time since first frame in this TCP stream'].notna()]['TCP Segment Len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
+        #    label=files_array[i]
+        #)
+plt.title(filename + " - TCP segment length ")
+plt.xlabel("t (s)")
+plt.grid('on')
+plt.ylim(top=60, bottom=0)
+plt.xlim(right=60, left=0)
+plt.ylabel("TCP Segment len (KBytes)")
+plt.grid('on')
+plt.legend(loc='lower left')
 # -----------------------------------
 # plot Throughput as the ratio of the moving average of TCP segment length / RTT
 # -----------------------------------
@@ -180,8 +205,9 @@ plt.title(filename + " - Throughput (Gbps) WND/RTT")
 plt.xlabel("t (s)")
 plt.ylabel("Throughput (Gbps)")
 plt.ylim(top=TOP_BW_AXIS, bottom=BOTTOM_BW_AXIS)
+plt.xlim(right=60, left=1)
 plt.grid('on')
-plt.legend()
+plt.legend(loc='upper right')
 
 # plt.scatter(df2['Time since first frame in this TCP stream'], df2['Length'].rolling(1000).mean())
 # plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['Length'].rolling(1000).mean())/(df2['Time'].rolling(1000).mean())/1000000)
@@ -211,10 +237,13 @@ for i, df in enumerate(df_array):
     # print(df['Retransmission'].unique())
 
     # convert retransmissions column to int
-    df['Retransmission'] = df['Retransmission'].replace(df['Retransmission'].unique()[0],
-                                                        0)  # first element should be NaN for not retransmission
-    df['Retransmission'] = df['Retransmission'].replace(df['Retransmission'].unique()[1],
-                                                        1)  # second element should be a weird string of len 9, for retransmission
+    # first element should be NaN for not retransmission
+    df['Retransmission'] = df['Retransmission'].replace(df['Retransmission'].unique()[0], 0)
+    try:
+        # second element should be a weird string of len 9, for retransmission
+        df['Retransmission'] = df['Retransmission'].replace(df['Retransmission'].unique()[1], 1)
+    except:
+        print('No retransmissions found')
 
     # count all the packets, no matter if lost or sent successfully.
     pkt_sent = df.groupby('Time since first frame in this TCP stream')['Retransmission'].count()
@@ -237,8 +266,10 @@ for i, pkt_sent in enumerate(pkt_sent_array_series):
 plt.title(filename + " - Packets sent")
 plt.xlabel("t (s)")
 plt.ylabel("Packets / second")
+
+plt.xlim(right=59, left=0)
 plt.grid('on')
-plt.legend()
+plt.legend(loc='lower left')
 
 # -----------------------------------
 # Plot retransmitted packets per second
@@ -246,12 +277,13 @@ plt.legend()
 plt.figure()
 for i, pkt_retransmit in enumerate(pkt_retransmit_array_series):
     if i not in remove_from_plot:
-        plt.plot(pkt_retransmit, label='test ' + str(i))
+        plt.plot(pkt_retransmit, label=files_array[i])
 plt.title(filename + " - Packets retransmitted")
 plt.xlabel("t (s)")
 plt.ylabel("Packets / second")
+plt.xlim(right=60, left=0)
 plt.grid('on')
-plt.legend()
+plt.legend(loc='upper left')
 
 # -----------------------------------
 # Plot packet loss metric
@@ -259,12 +291,14 @@ plt.legend()
 plt.figure()
 for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     if i not in remove_from_plot:
-        plt.plot(pkt_loss_ratio, label='test ' + str(i))
+        plt.plot(pkt_loss_ratio, label=files_array[i])
 plt.title(filename + " - packet loss ratio")
 plt.xlabel("t (s)")
 plt.ylabel("%")
+plt.ylim(top=2, bottom=0)
+plt.xlim(right=60, left=0)
 plt.grid('on')
-plt.legend()
+plt.legend(loc='upper left')
 
 # -----------------------------------
 # Plot calculated throughput as packets sent * TCP Window size
@@ -272,12 +306,13 @@ plt.legend()
 plt.figure()
 for i, pkt_sent in enumerate(pkt_sent_array_series):
     if i not in remove_from_plot:
-        plt.plot(pkt_sent * TCP_WINDOW_SIZE * 8 / Gbs_scale_factor / 2, label='test ' + str(i))
+        plt.plot(pkt_sent * TCP_WINDOW_SIZE * 8 / Gbs_scale_factor / 2, label=files_array[i])
 plt.title(filename + " - TCP Throughput as packets sent * TCP Window Size ")
 plt.xlabel("t (s)")
 plt.ylabel("Throughput (Gbps)")
 plt.ylim(top=TOP_BW_AXIS, bottom=BOTTOM_BW_AXIS)
+plt.xlim(right=59, left=1)
 plt.grid('on')
-plt.legend()
+plt.legend(loc='lower left')
 
 plt.show()
