@@ -41,8 +41,8 @@ ms_scale_factor = 1000
 kbps_scale_factor = 1000
 stream_index = 1
 
-remove_from_plot = [2,5,6]
-#remove_from_plot = []
+#remove_from_plot = [2,5,6]
+remove_from_plot = []
 '''
 define functions
 '''
@@ -295,7 +295,7 @@ for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
 plt.title(filename + " - packet loss ratio")
 plt.xlabel("t (s)")
 plt.ylabel("%")
-plt.ylim(top=2, bottom=0)
+plt.ylim(top=2, bottom=-0.1)
 plt.xlim(right=60, left=0)
 plt.grid('on')
 plt.legend(loc='upper left')
@@ -306,7 +306,10 @@ plt.legend(loc='upper left')
 plt.figure()
 for i, pkt_sent in enumerate(pkt_sent_array_series):
     if i not in remove_from_plot:
-        plt.plot(pkt_sent * TCP_WINDOW_SIZE * 8 / Gbs_scale_factor / 2, label=files_array[i])
+        #plt.plot(pkt_sent * TCP_WINDOW_SIZE * 8 / Gbs_scale_factor / 2, label=files_array[i])
+
+        #updated formula: pkt_sent (packets/second) * effective TCP length (KBytes/packet) * 8 (bits/Byte) / Gbs_scale_factor
+        plt.plot(pkt_sent * (df[df['Time since first frame in this TCP stream'].notna()]['TCP Segment Len'].rolling(rolling_sma_window_array[i]).mean()).mean() * 8 / Gbs_scale_factor , label=files_array[i])
 plt.title(filename + " - TCP Throughput as packets sent * TCP Window Size ")
 plt.xlabel("t (s)")
 plt.ylabel("Throughput (Gbps)")
