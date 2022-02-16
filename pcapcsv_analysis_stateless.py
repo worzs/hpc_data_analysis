@@ -19,11 +19,14 @@ import json
 
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
-files = []  # leave empty, for automatic file name appending
-no_files = 10
-filename = 'csv4gpython_'
+files_array=['csv10gpython_1.csv'] # leave empty, for automatic file name appending
+no_files = 2
+#the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
+#filename = 'csv4gpython_'
+filename = '10G'
 extension = '.csv'
-BANDWIDTH = 4
+
+BANDWIDTH = 10
 TOP_BW_AXIS = BANDWIDTH + 1
 BOTTOM_BW_AXIS = BANDWIDTH - 1
 desired_df_columns = ['Time since first frame in this TCP stream',
@@ -49,7 +52,7 @@ define functions
 
 
 # generate filenames by appending a number to a base filename
-def get_filenames(no_files=no_files, filename=filename, extension=extension, files_array=files):
+def get_filenames(no_files=no_files, filename=filename, extension=extension):
     for i in range(1, no_files + 1):
         files_array.append(filename + str(i) + extension)
     return files_array
@@ -104,7 +107,8 @@ def filter_packets_vm1_vm4(df_array):
 '''
 Processing section
 '''
-files_array = get_filenames()
+if len(files_array)==0:
+    files_array = get_filenames()
 df_array = read_files(files_array)
 df_array_time_int = set_time_float_to_int(df_array)
 pkt_sent_array = find_pkt_sent(df_array_time_int)
@@ -207,7 +211,8 @@ plt.ylabel("Throughput (Gbps)")
 plt.ylim(top=TOP_BW_AXIS, bottom=BOTTOM_BW_AXIS)
 plt.xlim(right=60, left=1)
 plt.grid('on')
-plt.legend(loc='upper right')
+#plt.legend(loc='upper right')
+plt.legend(loc='lower right')
 
 # plt.scatter(df2['Time since first frame in this TCP stream'], df2['Length'].rolling(1000).mean())
 # plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['Length'].rolling(1000).mean())/(df2['Time'].rolling(1000).mean())/1000000)
