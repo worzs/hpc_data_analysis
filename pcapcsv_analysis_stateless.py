@@ -20,7 +20,7 @@ import json
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
 files_array=['csv10gpython_1.csv'] # leave empty, for automatic file name appending
-no_files = 2
+no_files = 1
 #the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
 #filename = 'csv4gpython_'
 filename = '10G'
@@ -63,7 +63,7 @@ def read_files(files_array, path=path):
     df_array = []
     for i, filename in enumerate(files_array):
         # Read csv file and convert to pandas dataframe. Pull only relevant columns
-        df_temp = pd.read_csv(path + filename, usecols=desired_df_columns)
+        df_temp = pd.read_csv(path + filename, usecols=desired_df_columns, encoding = "ISO-8859-1") #fix for pandas 1.4
         print('reading: ' + path + filename)
         df_array.append(df_temp)
     return df_array
