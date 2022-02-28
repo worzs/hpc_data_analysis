@@ -9,34 +9,46 @@ Plot multiple series in one plot, stateless approach with matplotlib
 https://realpython.com/python-matplotlib-guide/
 
 TO BE EXECUTED in any computer/server where the csv file is stored.
-Required columns: Source, Destination, Stream index, Time since first frame in this TCP stream, Time, TCP Segment Len, Retransmission
+Required columns: ip.src, ip.dst, tcp.stream, tcp.time_relative, tcp.time_delta, tcp.len, tcp.analysis.retransmission
 
 '''
+
 import math
 import pandas as pd
+import matplotlib
+matplotlib.use('Qt5Agg', force=True) #fix for use qt5agg backend for matplotlib. Use $pip install pyqt5
 import matplotlib.pyplot as plt
 import json
 
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
-files_array=['csv10gpython_1.csv'] # leave empty, for automatic file name appending
+files_array=['10g|vm2vm3|only|tshark.csv',
+             '9g|vm2vm3|only|tshark.csv',
+             '8g|vm2vm3|only|tshark.csv',
+             '7g|vm2vm3|only|tshark.csv',
+             '6g|vm2vm3|only|tshark.csv',
+             '5g|vm2vm3|only|tshark.csv'] # leave empty, for automatic file name appending
 no_files = 1
 #the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
 #filename = 'csv4gpython_'
-filename = '10G'
+filename = ''
 extension = '.csv'
 
 BANDWIDTH = 10
-TOP_BW_AXIS = BANDWIDTH + 1
-BOTTOM_BW_AXIS = BANDWIDTH - 1
-desired_df_columns = ['Time since first frame in this TCP stream',
-                      'Source',
-                      'Destination',
-                      'Stream index',
-                      'Time',
-                      'TCP Segment Len',
-                      'Retransmission']
+TOP_BW_AXIS = 10
+BOTTOM_BW_AXIS = 0
+desired_df_columns = ['tcp.time_relative',
+                      'ip.src',
+                      'ip.dst',
+                      'tcp.stream',
+                      'tcp.time_delta',
+                      'tcp.len',
+                      'tcp.window_size',
+                      'tcp.analysis.retransmission']
 
+ROLLING_FACTOR=2
+ALPHA=0.5
+ROLLING_FACTOR_RTT=2
 TCP_WINDOW_SIZE = 65535  # in Bytes
 # Gbs_scale_factor = 1000000000 * math.sqrt(2) # for some reason, the calculated value is scaled by sqrt(2), so should divide by this.
 Gbs_scale_factor = 1000000000
@@ -68,7 +80,7 @@ def read_files(files_array, path=path):
         df_array.append(df_temp)
     return df_array
 
-def set_time_float_to_int(df_array, column='Time since first frame in this TCP stream'):
+def set_time_float_to_int(df_array, column='tcp.time_relative'):
     df_out = []
     for df in df_array:
         df[column] = df[df[column].notna()][column].astype(int)
@@ -79,7 +91,7 @@ def set_time_float_to_int(df_array, column='Time since first frame in this TCP s
 def find_pkt_sent(df_array,stream_index=1):
     pkt_sent_array = []
     for df in df_array:
-        series=df[df['Stream index'] == stream_index].groupby('Time since first frame in this TCP stream')['Source'].count()
+        series=df[df['tcp.stream'] == stream_index].groupby('tcp.time_relative')['ip.src'].count()
         pkt_sent_array.append(series)
     print('finding pkt sent series')
     return pkt_sent_array
@@ -97,9 +109,9 @@ def find_rolling_sma_window(pkt_sent_array):
 def filter_packets_vm1_vm4(df_array):
     df_out = []
     for df in df_array:
-        df = df[(df['Source'] == '10.0.0.1')
-                & (df['Destination'] == '10.0.0.4')
-                & (df['Stream index'] == stream_index)]
+        df = df[(df['ip.src'] == '10.0.0.1')
+                & (df['ip.dst'] == '10.0.0.4')
+                & (df['tcp.stream'] == stream_index)]
         df_out.append(df)
     return df_out
 
@@ -125,15 +137,15 @@ print('-------plotting-------')
 # plot RTT, vertical axis in ms.
 # -----------------------------------
 plt.figure()
-# plt.scatter(df2['Time since first frame in this TCP stream'], 1000*(df2['Time'].rolling(1000).mean()))
+# plt.scatter(df2['tcp.time_relative'], 1000*(df2['tcp.time_delta'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
         plt.plot(
-            df[df['Time since first frame in this TCP stream'].notna()]['Time since first frame in this TCP stream'],
-            df[df['Time since first frame in this TCP stream'].notna()]['Time'].rolling(rolling_sma_window_array[i]).mean() * ms_scale_factor,
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+            df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR_RTT)).mean() * ms_scale_factor,
             label=files_array[i]
         )
-        #plt.plot(df['Time since first frame in this TCP stream'], df['Time'] * ms_scale_factor, label='test ' + str(i))
+        #plt.plot(df['tcp.time_relative'], df['tcp.time_delta'] * ms_scale_factor, label='test ' + str(i))
 plt.title(filename + " - RTT")
 plt.xlabel("t (s)")
 plt.ylabel("RTT (ms)")
@@ -146,13 +158,13 @@ plt.legend(loc='upper right')
 # plot TCP segment length - SMA 1 second
 # -----------------------------------
 plt.figure()
-# plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['TCP Segment Len'].rolling(1000).mean()))
+# plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        #plt.scatter(df['Time since first frame in this TCP stream'], (df['TCP Segment Len']), label='test ' + str(i))
+        #plt.scatter(df['tcp.time_relative'], (df['tcp.len']), label='test ' + str(i))
         plt.plot(
-            df[df['Time since first frame in this TCP stream'].notna()]['Time since first frame in this TCP stream'],
-            (df[df['Time since first frame in this TCP stream'].notna()]['TCP Segment Len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+            (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
             label=files_array[i]
         )
 plt.title(filename + " - TCP segment length")
@@ -169,23 +181,46 @@ plt.legend(loc='lower left')
 # plot TCP segment length raw data
 # -----------------------------------
 plt.figure()
-# plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['TCP Segment Len'].rolling(1000).mean()))
+# plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        plt.scatter(df['Time since first frame in this TCP stream'], (df['TCP Segment Len']), label='test ' + str(i))
+        plt.scatter(df['tcp.time_relative'], (df['tcp.len']), label='test ' + str(i))
         #plt.plot(
-        #    df[df['Time since first frame in this TCP stream'].notna()]['Time since first frame in this TCP stream'],
-        #    (df[df['Time since first frame in this TCP stream'].notna()]['TCP Segment Len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
+        #    df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+        #    (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
         #    label=files_array[i]
         #)
 plt.title(filename + " - TCP segment length ")
 plt.xlabel("t (s)")
 plt.grid('on')
-plt.ylim(top=60, bottom=0)
-plt.xlim(right=60, left=0)
-plt.ylabel("TCP Segment len (KBytes)")
+plt.ylim(top=66000, bottom=0)
+plt.xlim(right=32, left=29)
+plt.ylabel("TCP Segment len (Bytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
+
+# -----------------------------------
+# plot TCP window size raw data
+# -----------------------------------
+plt.figure()
+# plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.scatter(df['tcp.time_relative'], (df['tcp.window_size']), label=files_array[i])
+        #plt.plot(
+        #    df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+        #    (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
+        #    label=files_array[i]
+        #)
+plt.title(filename + " - TCP window size ")
+plt.xlabel("t (s)")
+plt.grid('on')
+plt.ylim(top=66000, bottom=0)
+plt.xlim(right=32, left=29)
+plt.ylabel("TCP window size (Bytes)")
+plt.grid('on')
+plt.legend(loc='lower left')
+
 # -----------------------------------
 # plot Throughput as the ratio of the moving average of TCP segment length / RTT
 # -----------------------------------
@@ -194,14 +229,18 @@ plt.figure()
 # https://www.geeksforgeeks.org/how-to-calculate-moving-average-in-a-pandas-dataframe/
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        # plt.scatter(df2['Time since first frame in this TCP stream'], df2['Throughput'])
-        # plt.plot(df['Time since first frame in this TCP stream'], 8 * ((df['TCP Segment Len'].rolling(10000).mean()) / (
-        #    df['Time'].rolling(10000).mean())) / Gbs_scale_factor, label='test ' + str(i))
-        # plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['TCP Segment Len']/(df2['Time']).rolling(1000).mean() / 1024000))
+        # plt.scatter(df2['tcp.time_relative'], df2['Throughput'])
+        # plt.plot(df['tcp.time_relative'], 8 * ((df['tcp.len'].rolling(10000).mean()) / (
+        #    df['tcp.time_delta'].rolling(10000).mean())) / Gbs_scale_factor, label='test ' + str(i))
+        # plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len']/(df2['tcp.time_delta']).rolling(1000).mean() / 1024000))
         plt.plot(
-            df[df['Time since first frame in this TCP stream'].notna()]['Time since first frame in this TCP stream'],
-            8 * ((df[df['Time since first frame in this TCP stream'].notna()]['TCP Segment Len'].rolling(rolling_sma_window_array[i]).mean()) /
-                (df[df['Time since first frame in this TCP stream'].notna()]['Time'].rolling(rolling_sma_window_array[i]).mean())) / Gbs_scale_factor,
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+            #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean()) /
+            #    (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean())) / Gbs_scale_factor,
+            8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].ewm(span=int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean()) /
+              (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(span=int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean())) / Gbs_scale_factor,
+            #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].ewm(alpha=ALPHA).mean()) /
+            #     (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(alpha=ALPHA).mean())) / Gbs_scale_factor,
             label=files_array[i]
         )
 
@@ -214,21 +253,21 @@ plt.grid('on')
 #plt.legend(loc='upper right')
 plt.legend(loc='lower right')
 
-# plt.scatter(df2['Time since first frame in this TCP stream'], df2['Length'].rolling(1000).mean())
-# plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['Length'].rolling(1000).mean())/(df2['Time'].rolling(1000).mean())/1000000)
-# plt.scatter(df2['Time since first frame in this TCP stream'], df2['Length'].rolling(1000).mean())
-# plt.scatter(df2['Time since first frame in this TCP stream'], df2['Time'].rolling(1000).mean())
-# plt.scatter(df2['Time since first frame in this TCP stream'], 8*(df2['Length'].rolling(1000).mean())/(df2['Time'].rolling(1000).mean())/1000000)
+# plt.scatter(df2['tcp.time_relative'], df2['Length'].rolling(1000).mean())
+# plt.scatter(df2['tcp.time_relative'], 8*(df2['Length'].rolling(1000).mean())/(df2['tcp.time_delta'].rolling(1000).mean())/1000000)
+# plt.scatter(df2['tcp.time_relative'], df2['Length'].rolling(1000).mean())
+# plt.scatter(df2['tcp.time_relative'], df2['tcp.time_delta'].rolling(1000).mean())
+# plt.scatter(df2['tcp.time_relative'], 8*(df2['Length'].rolling(1000).mean())/(df2['tcp.time_delta'].rolling(1000).mean())/1000000)
 
 
 # =============================================================================================================================
-# Calculate packets sent, retransmissions and packet loss ratio
+# Calculate packets sent, tcp.analysis.retransmissions and packet loss ratio
 
 pkt_sent_array_series = []
 pkt_retransmit_array_series = []
 pkt_loss_ratio_array_series = []
 for i, df in enumerate(df_array):
-    # now group retransmissions each second.
+    # now group tcp.analysis.retransmissions each second.
     # convert time index to integer
     # https://www.geeksforgeeks.org/convert-floats-to-integers-in-a-pandas-dataframe/
     print('working on df: ' + str(i))
@@ -236,26 +275,26 @@ for i, df in enumerate(df_array):
 
     # drop na values on the column that we are going to convert to integer
     # https: // stackoverflow.com / questions / 13413590 / how - to - drop - rows - of - pandas - dataframe - whose - value - in -a - certain - column - is -nan
-    df = df[df['Time since first frame in this TCP stream'].notna()]
-    df['Time since first frame in this TCP stream'] = df['Time since first frame in this TCP stream'].astype(int)
+    df = df[df['tcp.time_relative'].notna()]
+    df['tcp.time_relative'] = df['tcp.time_relative'].astype(int)
     # print(df.keys())
-    # print(df['Retransmission'].unique())
+    # print(df['tcp.analysis.retransmission'].unique())
 
-    # convert retransmissions column to int
-    # first element should be NaN for not retransmission
-    df['Retransmission'] = df['Retransmission'].replace(df['Retransmission'].unique()[0], 0)
+    # convert tcp.analysis.retransmissions column to int
+    # first element should be NaN for not tcp.analysis.retransmission
+    df['tcp.analysis.retransmission'] = df['tcp.analysis.retransmission'].replace(df['tcp.analysis.retransmission'].unique()[0], 0)
     try:
-        # second element should be a weird string of len 9, for retransmission
-        df['Retransmission'] = df['Retransmission'].replace(df['Retransmission'].unique()[1], 1)
+        # second element should be a weird string of len 9, for tcp.analysis.retransmission
+        df['tcp.analysis.retransmission'] = df['tcp.analysis.retransmission'].replace(df['tcp.analysis.retransmission'].unique()[1], 1)
     except:
-        print('No retransmissions found')
+        print('No tcp.analysis.retransmissions found')
 
     # count all the packets, no matter if lost or sent successfully.
-    pkt_sent = df.groupby('Time since first frame in this TCP stream')['Retransmission'].count()
+    pkt_sent = df.groupby('tcp.time_relative')['tcp.analysis.retransmission'].count()
     print('pkt sent mean: ' + str(pkt_sent.mean()))
     pkt_sent_array_series.append(pkt_sent)
-    # add all the retransmissions per second, as a metric for packet loss
-    pkt_retransmit = df.groupby('Time since first frame in this TCP stream')['Retransmission'].sum()
+    # add all the tcp.analysis.retransmissions per second, as a metric for packet loss
+    pkt_retransmit = df.groupby('tcp.time_relative')['tcp.analysis.retransmission'].sum()
     pkt_retransmit_array_series.append(pkt_retransmit)
     # calculate the packet loss metric
     pkt_loss_ratio_array_series.append(100 * pkt_retransmit / pkt_sent)
@@ -314,7 +353,7 @@ for i, pkt_sent in enumerate(pkt_sent_array_series):
         #plt.plot(pkt_sent * TCP_WINDOW_SIZE * 8 / Gbs_scale_factor / 2, label=files_array[i])
 
         #updated formula: pkt_sent (packets/second) * effective TCP length (KBytes/packet) * 8 (bits/Byte) / Gbs_scale_factor
-        plt.plot(pkt_sent * (df[df['Time since first frame in this TCP stream'].notna()]['TCP Segment Len'].rolling(rolling_sma_window_array[i]).mean()).mean() * 8 / Gbs_scale_factor , label=files_array[i])
+        plt.plot(pkt_sent * (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean()).mean() * 8 / Gbs_scale_factor , label=files_array[i])
 plt.title(filename + " - TCP Throughput as packets sent * TCP Window Size ")
 plt.xlabel("t (s)")
 plt.ylabel("Throughput (Gbps)")
