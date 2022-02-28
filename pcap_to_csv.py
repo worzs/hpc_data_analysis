@@ -1,37 +1,59 @@
 '''
 William Orozco
 worozco at ucdavis dot edu
-January 2022
-References:
-https://github.com/vnetman/pcap2csv/blob/master/pcap2csv.py
-https://github.com/KimiNewt/pyshark
+February 2022
 
+Convert
+References:
+https://stackoverflow.com/questions/60228142/how-to-execute-tshark-in-python-for-every-file-in-a-folder
+https://shantoroy.com/networking/convert-pcap-to-csv-using-tshark/
+https://stackoverflow.com/questions/47319313/get-filenames-in-a-directory-without-extension-python
+https://www.geeksforgeeks.org/python-os-path-splitext-method/
 '''
 
-import pyshark
-from scapy.utils import RawPcapReader
-from scapy.layers.l2 import Ether
-from scapy.layers.inet import IP, UDP, TCP
-
-
+import os
+import subprocess
 import json
 
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
-filename = 'test-2g-01_10_2022-00_10_42.pcap'
-pcap_pyshark = pyshark.FileCapture(path+filename)
 
-desired_df_columns=['Time since first frame in this TCP stream',
-                    'Source',
-                    'Destination',
-                    'Stream index',
-                    'Time',
-                    'TCP Segment Len',
-                    'Retransmission']
+df_headers = ['tcp.time_relative',
+              'ip.src',
+              'ip.dst',
+              'tcp.stream',
+              'tcp.time_delta',
+              'tcp.len',
+              'tcp.window_size',
+              'tcp.analysis.retransmission']
 
-print(pcap_pyshark[3000].tcp.time_relative)
-print(pcap_pyshark[3000].tcp.time_delta)
-print(pcap_pyshark[3000].ip.src_host)
-print(pcap_pyshark[3000].ip.dst_host)
-print(pcap_pyshark[3000].tcp.stream)
-print(pcap_pyshark[3002].tcp.len)
+# get the file list in the directory
+path_files = os.listdir(path)
+
+
+print ("writing files on: "+path)
+for pcap_file in os.listdir(path):
+     # analyze only pcap files
+     if pcap_file.endswith(".pcap"):
+         #os.path.splitext returns in  position 0 the fileneme, in position 1 the extension
+         #TODO check if the csv file already exists.
+         #if (os.path.splitext(pcap_file)[0] + '.csv') in os.listdir(path):
+         #   filename = os.path.splitext(pcap_file)[0] + '.csv'
+         filename = os.path.splitext(pcap_file)[0] + '.csv'
+         # write the csv file if not already in the folder.
+         if filename not in os.listdir(path):
+             args = ['tshark', '-r', os.path.join(path, pcap_file),
+                     '-T', 'fields', '-E', 'header=y', '-E', 'separator=,', '-E', 'quote=d', '-E', 'occurrence=a',
+                     '-e', 'ip.ttl', '-e', 'ip.src', '-e', 'ip.dst',
+                     '-e', 'tcp.srcport', '-e', 'tcp.dstport', '-e', 'tcp.seq', '-e', 'tcp.ack',
+                     '-e', 'tcp.len', '-e', 'tcp.seq', '-e', 'tcp.nxtseq',
+                     '-e', 'tcp.time_delta', '-e', 'tcp.time_relative', '-e', 'tcp.stream',
+                     '-e', 'tcp.analysis.retransmission', '-e', 'tcp.analysis.lost_segment',
+                     '-e', 'tcp.window_size', '-q']
+             with open(path+filename,"w") as outfile:
+                 print("writing: " + filename)
+                 subprocess.run(args, stdout=outfile, check=True)
+         else:
+             print(filename + " already exists on " + path)
+
+print("------Finished-------")

@@ -20,8 +20,10 @@ matplotlib.use('Qt5Agg', force=True) #fix for use qt5agg backend for matplotlib.
 import matplotlib.pyplot as plt
 import json
 
+# the following 2 lines can be replaced by only path=<INSERT_PATH_HERE>". I chose this way to avoid submitting my laptop directories to github.
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
+
 files_array=['10g|vm2vm3|only|tshark.csv',
              '9g|vm2vm3|only|tshark.csv',
              '8g|vm2vm3|only|tshark.csv',
@@ -46,9 +48,11 @@ desired_df_columns = ['tcp.time_relative',
                       'tcp.window_size',
                       'tcp.analysis.retransmission']
 
+#factors for modifying the rolling window size of moving average
 ROLLING_FACTOR=2
 ALPHA=0.5
 ROLLING_FACTOR_RTT=2
+
 TCP_WINDOW_SIZE = 65535  # in Bytes
 # Gbs_scale_factor = 1000000000 * math.sqrt(2) # for some reason, the calculated value is scaled by sqrt(2), so should divide by this.
 Gbs_scale_factor = 1000000000
@@ -75,7 +79,7 @@ def read_files(files_array, path=path):
     df_array = []
     for i, filename in enumerate(files_array):
         # Read csv file and convert to pandas dataframe. Pull only relevant columns
-        df_temp = pd.read_csv(path + filename, usecols=desired_df_columns, encoding = "ISO-8859-1") #fix for pandas 1.4
+        df_temp = pd.read_csv(path + filename, usecols=desired_df_columns, encoding="ISO-8859-1") #fix for pandas 1.4
         print('reading: ' + path + filename)
         df_array.append(df_temp)
     return df_array
