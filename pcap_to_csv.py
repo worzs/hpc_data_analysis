@@ -31,7 +31,7 @@ df_headers = ['tcp.time_relative',
 path_files = os.listdir(path)
 
 
-print ("writing files on: "+path)
+print ("reading pcap /writing csv in: "+path)
 for pcap_file in os.listdir(path):
      # analyze only pcap files
      if pcap_file.endswith(".pcap"):

@@ -19,22 +19,36 @@ import matplotlib
 matplotlib.use('Qt5Agg', force=True) #fix for use qt5agg backend for matplotlib. Use $pip install pyqt5
 import matplotlib.pyplot as plt
 import json
+import os
 
 # the following 2 lines can be replaced by only path=<INSERT_PATH_HERE>". I chose this way to avoid submitting my laptop directories to github.
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
 
-files_array=['10g|vm2vm3|only|tshark.csv',
-             '9g|vm2vm3|only|tshark.csv',
-             '8g|vm2vm3|only|tshark.csv',
-             '7g|vm2vm3|only|tshark.csv',
-             '6g|vm2vm3|only|tshark.csv',
-             '5g|vm2vm3|only|tshark.csv'] # leave empty, for automatic file name appending
+files_array=[] # leave empty, for automatic file name appending
+
+#for analyzing csv files in path
+for file in os.listdir(path):
+    # analyze only pcap files
+    if (file.endswith(".csv")):# and ('tx' in file)):
+        files_array.append(file)
+files_array.sort()
+#files_array=files_array[3:5]
+
+#parameters for automatic filename generation
 no_files = 1
 #the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
 #filename = 'csv4gpython_'
 filename = ''
 extension = '.csv'
+
+LABEL_RIGHT_LIMIT = 3 # last element of filename standard to include in plot label
+TEST_DURATION=20
+RECONFIGURATION = 10
+
+markers = ['>', '+', '.', ',', 'o', 'v', 'x', 'X', 'D', '|']
+MARKER_SIZE=10
+MARKER_EVERY_S = 4
 
 BANDWIDTH = 10
 TOP_BW_AXIS = 10
@@ -147,14 +161,19 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR_RTT)).mean() * ms_scale_factor,
-            label=files_array[i]
+            #label=files_array[i]
+            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            #https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
+            marker=markers[i%len(markers)],
+            markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
         )
         #plt.plot(df['tcp.time_relative'], df['tcp.time_delta'] * ms_scale_factor, label='test ' + str(i))
 plt.title(filename + " - RTT")
 plt.xlabel("t (s)")
 plt.ylabel("RTT (ms)")
 plt.ylim(top=0.2, bottom=0)
-plt.xlim(right=60, left=1)
+plt.xlim(right=TEST_DURATION, left=1)
 plt.grid('on')
 plt.legend(loc='upper right')
 
@@ -169,13 +188,17 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
-            label=files_array[i]
+            #label=files_array[i]
+            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            marker=markers[i % len(markers)],
+            markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
         )
 plt.title(filename + " - TCP segment length")
 plt.xlabel("t (s)")
 plt.grid('on')
 plt.ylim(top=60, bottom=0)
-plt.xlim(right=60, left=0)
+plt.xlim(right=TEST_DURATION, left=1)
 plt.ylabel("TCP Segment len (KBytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
@@ -188,7 +211,10 @@ plt.figure()
 # plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        plt.scatter(df['tcp.time_relative'], (df['tcp.len']), label='test ' + str(i))
+        plt.scatter(df['tcp.time_relative'], (df['tcp.len']),
+                    #label=files_array[i]
+                    label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1))
+                    )
         #plt.plot(
         #    df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
         #    (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
@@ -198,7 +224,7 @@ plt.title(filename + " - TCP segment length ")
 plt.xlabel("t (s)")
 plt.grid('on')
 plt.ylim(top=66000, bottom=0)
-plt.xlim(right=32, left=29)
+plt.xlim(right=RECONFIGURATION+2, left=RECONFIGURATION-2)
 plt.ylabel("TCP Segment len (Bytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
@@ -210,7 +236,10 @@ plt.figure()
 # plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        plt.scatter(df['tcp.time_relative'], (df['tcp.window_size']), label=files_array[i])
+        plt.scatter(df['tcp.time_relative'], (df['tcp.window_size']),
+                    #label=files_array[i]
+                    label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1))
+                    )
         #plt.plot(
         #    df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
         #    (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
@@ -220,7 +249,7 @@ plt.title(filename + " - TCP window size ")
 plt.xlabel("t (s)")
 plt.grid('on')
 plt.ylim(top=66000, bottom=0)
-plt.xlim(right=32, left=29)
+plt.xlim(right=RECONFIGURATION+2, left=RECONFIGURATION-2)
 plt.ylabel("TCP window size (Bytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
@@ -245,14 +274,19 @@ for i, df in enumerate(df_array):
               (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(span=int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean())) / Gbs_scale_factor,
             #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].ewm(alpha=ALPHA).mean()) /
             #     (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(alpha=ALPHA).mean())) / Gbs_scale_factor,
-            label=files_array[i]
+
+            #label=files_array[i]
+            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            marker=markers[i % len(markers)],
+            markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
         )
 
 plt.title(filename + " - Throughput (Gbps) WND/RTT")
 plt.xlabel("t (s)")
 plt.ylabel("Throughput (Gbps)")
 plt.ylim(top=TOP_BW_AXIS, bottom=BOTTOM_BW_AXIS)
-plt.xlim(right=60, left=1)
+plt.xlim(right=TEST_DURATION, left=1)
 plt.grid('on')
 #plt.legend(loc='upper right')
 plt.legend(loc='lower right')
@@ -310,12 +344,18 @@ for i, df in enumerate(df_array):
 plt.figure()
 for i, pkt_sent in enumerate(pkt_sent_array_series):
     if i not in remove_from_plot:
-        plt.plot(pkt_sent, label='test ' + str(i))
+        plt.plot(pkt_sent,
+                 #label=files_array[i]
+                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 marker=markers[i % len(markers)],
+                 markevery=MARKER_EVERY_S ,
+                 markersize=MARKER_SIZE
+                 )
 plt.title(filename + " - Packets sent")
 plt.xlabel("t (s)")
 plt.ylabel("Packets / second")
 
-plt.xlim(right=59, left=0)
+plt.xlim(right=TEST_DURATION-1, left=0)
 plt.grid('on')
 plt.legend(loc='lower left')
 
@@ -325,11 +365,17 @@ plt.legend(loc='lower left')
 plt.figure()
 for i, pkt_retransmit in enumerate(pkt_retransmit_array_series):
     if i not in remove_from_plot:
-        plt.plot(pkt_retransmit, label=files_array[i])
+        plt.plot(pkt_retransmit,
+                 #label=files_array[i]
+                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 marker=markers[i % len(markers)],
+                 markevery=MARKER_EVERY_S,
+                 markersize=MARKER_SIZE
+                 )
 plt.title(filename + " - Packets retransmitted")
 plt.xlabel("t (s)")
 plt.ylabel("Packets / second")
-plt.xlim(right=60, left=0)
+plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 plt.legend(loc='upper left')
 
@@ -339,12 +385,18 @@ plt.legend(loc='upper left')
 plt.figure()
 for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     if i not in remove_from_plot:
-        plt.plot(pkt_loss_ratio, label=files_array[i])
+        plt.plot(pkt_loss_ratio,
+                 #label=files_array[i]
+                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 marker=markers[i % len(markers)],
+                 markevery=MARKER_EVERY_S,
+                 markersize=MARKER_SIZE
+                 )
 plt.title(filename + " - packet loss ratio")
 plt.xlabel("t (s)")
 plt.ylabel("%")
 plt.ylim(top=2, bottom=-0.1)
-plt.xlim(right=60, left=0)
+plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 plt.legend(loc='upper left')
 
@@ -357,12 +409,18 @@ for i, pkt_sent in enumerate(pkt_sent_array_series):
         #plt.plot(pkt_sent * TCP_WINDOW_SIZE * 8 / Gbs_scale_factor / 2, label=files_array[i])
 
         #updated formula: pkt_sent (packets/second) * effective TCP length (KBytes/packet) * 8 (bits/Byte) / Gbs_scale_factor
-        plt.plot(pkt_sent * (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean()).mean() * 8 / Gbs_scale_factor , label=files_array[i])
+        plt.plot(pkt_sent * (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean()).mean() * 8 / Gbs_scale_factor ,
+                 #label=files_array[i]
+                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 marker=markers[i % len(markers)],
+                 markevery=MARKER_EVERY_S,
+                 markersize=MARKER_SIZE
+                 )
 plt.title(filename + " - TCP Throughput as packets sent * TCP Window Size ")
 plt.xlabel("t (s)")
 plt.ylabel("Throughput (Gbps)")
 plt.ylim(top=TOP_BW_AXIS, bottom=BOTTOM_BW_AXIS)
-plt.xlim(right=59, left=1)
+plt.xlim(right=TEST_DURATION-1, left=1)
 plt.grid('on')
 plt.legend(loc='lower left')
 
