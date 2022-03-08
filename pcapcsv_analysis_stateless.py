@@ -30,10 +30,10 @@ files_array=[] # leave empty, for automatic file name appending
 #for analyzing csv files in path
 for file in os.listdir(path):
     # analyze only pcap files
-    if (file.endswith(".csv")):# and ('tx' in file)):
+    if (file.endswith(".csv")):# and ('v1' in file):
         files_array.append(file)
 files_array.sort()
-#files_array=files_array[3:5]
+#files_array=files_array[0:3]
 
 #parameters for automatic filename generation
 no_files = 1
@@ -48,7 +48,8 @@ RECONFIGURATION = 10
 
 markers = ['>', '+', '.', ',', 'o', 'v', 'x', 'X', 'D', '|']
 MARKER_SIZE=10
-MARKER_EVERY_S = 4
+MARKER_EVERY_S = 4 #add a marker to the time series every N seconds.
+
 
 BANDWIDTH = 10
 TOP_BW_AXIS = 10
@@ -63,12 +64,11 @@ desired_df_columns = ['tcp.time_relative',
                       'tcp.analysis.retransmission']
 
 #factors for modifying the rolling window size of moving average
-ROLLING_FACTOR=2
+ROLLING_FACTOR=2 # used for calculating average throughput. rolling 1 second means SMA 1, rolling N means SMA 1/N seconds
 ALPHA=0.5
-ROLLING_FACTOR_RTT=2
+ROLLING_FACTOR_RTT=2 # used for calculating average RTT. rolling 1 second means SMA 1, rolling N means SMA 1/N seconds
 
 TCP_WINDOW_SIZE = 65535  # in Bytes
-# Gbs_scale_factor = 1000000000 * math.sqrt(2) # for some reason, the calculated value is scaled by sqrt(2), so should divide by this.
 Gbs_scale_factor = 1000000000
 ms_scale_factor = 1000
 kbps_scale_factor = 1000
@@ -76,6 +76,9 @@ stream_index = 1
 
 #remove_from_plot = [2,5,6]
 remove_from_plot = []
+
+
+
 '''
 define functions
 '''
@@ -203,7 +206,7 @@ plt.ylabel("TCP Segment len (KBytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
 
-
+'''
 # -----------------------------------
 # plot TCP segment length raw data
 # -----------------------------------
@@ -228,7 +231,31 @@ plt.xlim(right=RECONFIGURATION+2, left=RECONFIGURATION-2)
 plt.ylabel("TCP Segment len (Bytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
+'''
+# -----------------------------------
+# plot link unavailability based on discontinuities of TCP segment length data
+# -----------------------------------
+plt.figure()
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        df['link_unavailable'] = df['tcp.time_relative'].diff()
+        #.diff returns the difference between previous row by default, useful to find all the discontinuities in time
+        plt.plot(df['tcp.time_relative'],
+                    df['link_unavailable'],
+                    label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                    marker=markers[i % len(markers)],
+                    markersize=MARKER_SIZE
+                    )
+plt.title(filename + " - Link unavailability ")
+plt.xlabel("t (s)")
+plt.grid('on')
+plt.ylim(top=0.5, bottom=0)
+plt.xlim(right=TEST_DURATION, left=1)
+plt.ylabel("Link unavailability (s)")
+plt.grid('on')
+plt.legend(loc='upper right')
 
+'''
 # -----------------------------------
 # plot TCP window size raw data
 # -----------------------------------
@@ -247,12 +274,13 @@ for i, df in enumerate(df_array):
         #)
 plt.title(filename + " - TCP window size ")
 plt.xlabel("t (s)")
-plt.grid('on')
+plte.grid('on')
 plt.ylim(top=66000, bottom=0)
 plt.xlim(right=RECONFIGURATION+2, left=RECONFIGURATION-2)
 plt.ylabel("TCP window size (Bytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
+'''
 
 # -----------------------------------
 # plot Throughput as the ratio of the moving average of TCP segment length / RTT
@@ -291,12 +319,6 @@ plt.grid('on')
 #plt.legend(loc='upper right')
 plt.legend(loc='lower right')
 
-# plt.scatter(df2['tcp.time_relative'], df2['Length'].rolling(1000).mean())
-# plt.scatter(df2['tcp.time_relative'], 8*(df2['Length'].rolling(1000).mean())/(df2['tcp.time_delta'].rolling(1000).mean())/1000000)
-# plt.scatter(df2['tcp.time_relative'], df2['Length'].rolling(1000).mean())
-# plt.scatter(df2['tcp.time_relative'], df2['tcp.time_delta'].rolling(1000).mean())
-# plt.scatter(df2['tcp.time_relative'], 8*(df2['Length'].rolling(1000).mean())/(df2['tcp.time_delta'].rolling(1000).mean())/1000000)
-
 
 # =============================================================================================================================
 # Calculate packets sent, tcp.analysis.retransmissions and packet loss ratio
@@ -304,6 +326,7 @@ plt.legend(loc='lower right')
 pkt_sent_array_series = []
 pkt_retransmit_array_series = []
 pkt_loss_ratio_array_series = []
+link_unavailable_array_series = []
 for i, df in enumerate(df_array):
     # now group tcp.analysis.retransmissions each second.
     # convert time index to integer
@@ -337,7 +360,9 @@ for i, df in enumerate(df_array):
     # calculate the packet loss metric
     pkt_loss_ratio_array_series.append(100 * pkt_retransmit / pkt_sent)
 
+
 # Now plot the results.
+'''
 # -----------------------------------
 # Plot sent packets per second
 # -----------------------------------
@@ -358,7 +383,9 @@ plt.ylabel("Packets / second")
 plt.xlim(right=TEST_DURATION-1, left=0)
 plt.grid('on')
 plt.legend(loc='lower left')
+'''
 
+'''
 # -----------------------------------
 # Plot retransmitted packets per second
 # -----------------------------------
@@ -378,6 +405,7 @@ plt.ylabel("Packets / second")
 plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 plt.legend(loc='upper left')
+'''
 
 # -----------------------------------
 # Plot packet loss metric
@@ -400,6 +428,73 @@ plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 plt.legend(loc='upper left')
 
+'''
+plt.figure()
+#plot with stem
+for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
+    if i not in remove_from_plot:
+        plt.stem(pkt_loss_ratio,
+                 #label=files_array[i]
+                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 #marker=markers[i % len(markers)],
+                 #markevery=MARKER_EVERY_S,
+                 #markersize=MARKER_SIZE
+                 )
+plt.title(filename + " - packet loss ratio")
+plt.xlabel("t (s)")
+plt.ylabel("%")
+plt.ylim(top=2, bottom=-0.1)
+plt.xlim(right=TEST_DURATION, left=0)
+plt.grid('on')
+plt.legend(loc='upper left')
+'''
+
+# -----------------------------------
+# Plot packet loss as box plot
+# -----------------------------------
+plt.figure()
+df_loss=[[],[],[]]
+for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
+    if i not in remove_from_plot:
+        df_loss[0].append(pkt_loss_ratio[5])  # make_before_break 1
+        df_loss[1].append(pkt_loss_ratio[10]) # optical reconfiguration
+        df_loss[2].append(pkt_loss_ratio[15]) # make_before_break 2
+print(df_loss)
+plt.boxplot(df_loss)
+plt.title(filename + " - packet loss ratio")
+#plt.xlabel("t (s)")
+plt.ylabel("%")
+plt.ylim(top=2, bottom=-0.1)
+#plt.xlim(right=TEST_DURATION, left=0)
+plt.grid('on')
+#plt.legend(loc='upper left')
+
+
+# -----------------------------------
+# Link unavailability as box plot
+# -----------------------------------
+df_link_unavailable=[[],[],[]]
+plt.figure()
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+
+        df['tcp.time_relative'] = df['tcp.time_relative'].astype(int)
+        #print(df[['tcp.time_relative', 'link_unavailable']])
+        df_link_unavailable[0].extend(df[(df['tcp.time_relative']==5)  & (df['link_unavailable']>0.02)]['link_unavailable'])  # make_before_break 1
+        df_link_unavailable[1].extend(df[(df['tcp.time_relative']==10) & (df['link_unavailable']>0.005)]['link_unavailable']) # optical reconfiguration
+        df_link_unavailable[2].extend(df[(df['tcp.time_relative']==15) & (df['link_unavailable']>0.005)]['link_unavailable']) # make_before_break 2
+print(df_link_unavailable)
+plt.boxplot(df_link_unavailable)
+plt.title(filename + " - link unavailability")
+#plt.xlabel("t (s)")
+plt.ylabel(" t(s)")
+plt.ylim(top=0.5, bottom=-0.1)
+#plt.xlim(right=TEST_DURATION, left=0)
+plt.grid('on')
+#plt.legend(loc='upper left')
+
+
+'''
 # -----------------------------------
 # Plot calculated throughput as packets sent * TCP Window size
 # -----------------------------------
@@ -423,5 +518,7 @@ plt.ylim(top=TOP_BW_AXIS, bottom=BOTTOM_BW_AXIS)
 plt.xlim(right=TEST_DURATION-1, left=1)
 plt.grid('on')
 plt.legend(loc='lower left')
+'''
+
 
 plt.show()
