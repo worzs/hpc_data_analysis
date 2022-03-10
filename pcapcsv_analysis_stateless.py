@@ -33,16 +33,17 @@ for file in os.listdir(path):
     if (file.endswith(".csv")):# and ('v1' in file):
         files_array.append(file)
 files_array.sort()
-#files_array=files_array[20:30]
+#files_array=files_array[0:1]
 
 remove_from_plot = []
-remove_from_plot.extend(list(range(0,40)))
+remove_from_plot.extend(list(range(10,60)))
+#remove_from_plot.extend(list(range(40,50)))
 
 #parameters for automatic filename generation
 no_files = 1
 #the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
 #filename = 'csv4gpython_'
-filename = ''
+filename = 'Optical Switching v1'
 extension = '.csv'
 
 LABEL_RIGHT_LIMIT = 3 # last element of filename standard to include in plot label
@@ -52,7 +53,9 @@ RECONFIGURATION = 10
 markers = ['>', '+', '.', ',', 'o', 'v', 'x', 'X', 'D', '|']
 MARKER_SIZE = 10
 MARKER_EVERY_S = 4 #add a marker to the time series every N seconds.
-
+PIXEL_W=800 #for plot size
+PIXEL_H=600
+px = 1/plt.rcParams['figure.dpi'] #get dpi for pixel size setting
 
 BANDWIDTH = 10
 TOP_BW_AXIS = 10
@@ -159,7 +162,7 @@ print('-------plotting-------')
 # -----------------------------------
 # plot RTT, vertical axis in ms.
 # -----------------------------------
-plt.figure()
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 # plt.scatter(df2['tcp.time_relative'], 1000*(df2['tcp.time_delta'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
@@ -178,14 +181,14 @@ plt.title(filename + " - RTT")
 plt.xlabel("t (s)")
 plt.ylabel("RTT (ms)")
 plt.ylim(top=0.2, bottom=0)
-plt.xlim(right=TEST_DURATION, left=1)
+plt.xlim(right=TEST_DURATION, left=1.1)
 plt.grid('on')
 plt.legend(loc='upper right')
 
 # -----------------------------------
 # plot TCP segment length - SMA 1 second
 # -----------------------------------
-plt.figure()
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 # plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
@@ -203,7 +206,7 @@ plt.title(filename + " - TCP segment length")
 plt.xlabel("t (s)")
 plt.grid('on')
 plt.ylim(top=60, bottom=0)
-plt.xlim(right=TEST_DURATION, left=1)
+plt.xlim(right=TEST_DURATION, left=1.1)
 plt.ylabel("TCP Segment len (KBytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
@@ -237,7 +240,7 @@ plt.legend(loc='lower left')
 # -----------------------------------
 # plot link unavailability based on discontinuities of TCP segment length data
 # -----------------------------------
-plt.figure()
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     df['link_unavailable'] = df['tcp.time_relative'].diff()
     if i not in remove_from_plot:
@@ -253,7 +256,7 @@ plt.title(filename + " - Link unavailability ")
 plt.xlabel("t (s)")
 plt.grid('on')
 plt.ylim(top=0.5, bottom=0)
-plt.xlim(right=TEST_DURATION, left=1)
+plt.xlim(right=TEST_DURATION, left=1.1)
 plt.ylabel("Link unavailability (s)")
 plt.grid('on')
 plt.legend(loc='upper right')
@@ -288,7 +291,7 @@ plt.legend(loc='lower left')
 # -----------------------------------
 # plot Throughput as the ratio of the moving average of TCP segment length / RTT
 # -----------------------------------
-plt.figure()
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 # create a new entry in the dataframe for the throughput with Moving Average
 # https://www.geeksforgeeks.org/how-to-calculate-moving-average-in-a-pandas-dataframe/
 for i, df in enumerate(df_array):
@@ -317,7 +320,7 @@ plt.title(filename + " - Throughput (Gbps) WND/RTT")
 plt.xlabel("t (s)")
 plt.ylabel("Throughput (Gbps)")
 plt.ylim(top=TOP_BW_AXIS, bottom=BOTTOM_BW_AXIS)
-plt.xlim(right=TEST_DURATION, left=1)
+plt.xlim(right=TEST_DURATION, left=1.1)
 plt.grid('on')
 #plt.legend(loc='upper right')
 plt.legend(loc='lower right')
@@ -334,7 +337,7 @@ for i, df in enumerate(df_array):
     # now group tcp.analysis.retransmissions each second.
     # convert time index to integer
     # https://www.geeksforgeeks.org/convert-floats-to-integers-in-a-pandas-dataframe/
-    print('working on df: ' + str(i))
+    print('calculating packet loss on df: ' + str(i))
     # df = df.dropna()
 
     # drop na values on the column that we are going to convert to integer
@@ -355,7 +358,7 @@ for i, df in enumerate(df_array):
 
     # count all the packets, no matter if lost or sent successfully.
     pkt_sent = df.groupby('tcp.time_relative')['tcp.analysis.retransmission'].count()
-    print('pkt sent mean: ' + str(pkt_sent.mean()))
+    #print('pkt sent mean: ' + str(pkt_sent.mean())) #for debugging purposes
     pkt_sent_array_series.append(pkt_sent)
     # add all the tcp.analysis.retransmissions per second, as a metric for packet loss
     pkt_retransmit = df.groupby('tcp.time_relative')['tcp.analysis.retransmission'].sum()
@@ -413,7 +416,7 @@ plt.legend(loc='upper left')
 # -----------------------------------
 # Plot packet loss metric
 # -----------------------------------
-plt.figure()
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     if i not in remove_from_plot:
         plt.plot(pkt_loss_ratio,
@@ -455,21 +458,35 @@ plt.legend(loc='upper left')
 # -----------------------------------
 # Plot packet loss as box plot
 # -----------------------------------
-plt.figure()
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 df_loss=[[],[],[],[]]
 for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     #if i not in remove_from_plot:
     df_loss[0].append(pkt_loss_ratio[2])  # steady state
-    df_loss[1].append(pkt_loss_ratio[5])  # make_before_break 1
-    df_loss[2].append(pkt_loss_ratio[10]) # optical reconfiguration
-    df_loss[3].append(pkt_loss_ratio[15]) # make_before_break 2
-print(df_loss) #for debugging purposes
-plt.boxplot(df_loss)
+    if 'mbb' in files_array[i]:
+        df_loss[1].append(pkt_loss_ratio[5])  # make_before_break 1
+        df_loss[3].append(pkt_loss_ratio[15]) # make_before_break 2
+        df_loss[2].append(pkt_loss_ratio[10])  # optical reconfiguration
+    else:
+        #if max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]) <20:
+        df_loss[2].append(max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]))  # optical reconfiguration
+
+print('packet loss steady state len: '+str(len(df_loss[0])))
+print('packet loss optical switch reconfiguration t=10 len: ' + str(len(df_loss[2])))
+if 'mbb' in files_array[0]:
+    print('packet loss mbb 1 t=5 len: ' + str(len(df_loss[1])))
+    print('packet loss mbb 2 t=15 len: ' + str(len(df_loss[3])))
+    plt.boxplot(df_loss)
+    plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+    #plt.ylim(top=2, bottom=-0.1)
+else:
+    plt.boxplot([df_loss[0], df_loss[2]])
+    plt.xticks([1, 2], ['steady', 't=10s'])
+    #plt.ylim(top=20, bottom=-0.1)
+plt.ylim(top=10, bottom=-0.1)
 plt.title(filename + " - packet loss ratio")
 #plt.xlabel("t (s)")
-plt.xticks([1, 2, 3,4], ['steady', 't=5s', 't=10s', 't=15s'])
 plt.ylabel("%")
-plt.ylim(top=2, bottom=-0.1)
 #plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 #plt.legend(loc='upper left')
@@ -479,34 +496,45 @@ plt.grid('on')
 # Link unavailability as box plot
 # -----------------------------------
 df_link_unavailable=[[],[],[],[]]
-plt.figure()
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     #if i not in remove_from_plot:
     df = df[df['tcp.time_relative'].notna()] # very important line. Otherwise an exception can be raised.
     df['tcp.time_relative'] = df['tcp.time_relative'].astype(int)
     # print(df[['tcp.time_relative', 'link_unavailable']]) #for debugging purposes
-    df_link_unavailable[0].extend(df[(df['tcp.time_relative'] == 2)& (df['link_unavailable']>0.005)]['link_unavailable'])  # steady state, bypass sampling rate
-    df_link_unavailable[1].extend(df[(df['tcp.time_relative']==5)  & (df['link_unavailable']>0.03)]['link_unavailable'])  # make_before_break 1
-    df_link_unavailable[2].extend(df[(df['tcp.time_relative']==10) & (df['link_unavailable']>0.005)]['link_unavailable']) # optical reconfiguration, bypass sampling rate
-    df_link_unavailable[3].extend(df[(df['tcp.time_relative']==15) & (df['link_unavailable']>0.005) & (df['link_unavailable']<0.2)]['link_unavailable']) # make_before_break 2
+    df_link_unavailable[0].extend(df[(df['tcp.time_relative'] == 2)& (df['link_unavailable']>0.006)]['link_unavailable'])  # steady state, bypass sampling rate
 
+    if 'mbb' in files_array[i]:
+        df_link_unavailable[1].extend(df[(df['tcp.time_relative']==5)  & (df['link_unavailable']>0.03)]['link_unavailable'])  # make_before_break 1
+        df_link_unavailable[3].extend(df[(df['tcp.time_relative']==15) & (df['link_unavailable']>0.005) & (df['link_unavailable']<0.2)]['link_unavailable']) # make_before_break 2
+        df_link_unavailable[2].extend(df[(df['tcp.time_relative'] == 10) & (df['link_unavailable'] > 0.005)]['link_unavailable'])  # optical reconfiguration, bypass sampling rate
+    else:
+        df_link_unavailable[2].append(max(df[(df['tcp.time_relative'] >=9) & (df['tcp.time_relative'] <= 11) & (df['link_unavailable'] > 0.006)]['link_unavailable']))  # optical reconfiguration, bypass sampling rate
+    #print(max(df[(df['tcp.time_relative'] >=9) & (df['tcp.time_relative'] <= 11) & (df['link_unavailable'] > 0.005)]['link_unavailable']))
     #df_link_unavailable[1].extend(df[(df['tcp.time_relative'] ==  5)]['link_unavailable'])  # make_before_break 1
     #df_link_unavailable[2].extend(df[(df['tcp.time_relative'] == 10)]['link_unavailable'])  # optical reconfiguration
     #df_link_unavailable[3].extend(df[(df['tcp.time_relative'] == 15)]['link_unavailable'])  # make_before_break 2
 
 print("link unavailable steady state len: "+ str(len(df_link_unavailable[0]))) #for debugging purposes
-print("link unavailable t=5 len: "+ str(len(df_link_unavailable[1]))) #for debugging purposes
 print("link unavailable t=10 len: "+ str(len(df_link_unavailable[2]))) #for debugging purposes
-print("link unavailable t=15 len: "+ str(len(df_link_unavailable[3]))) #for debugging purposes
 
-plt.boxplot(df_link_unavailable)
+if 'mbb' in files_array[0]:
+    print("link unavailable t=5 len: " + str(len(df_link_unavailable[1])))  # for debugging purposes
+    print("link unavailable t=15 len: " + str(len(df_link_unavailable[3])))  # for debugging purposes
+    plt.boxplot(df_link_unavailable)
+    plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+    #plt.ylim(top=1, bottom=-0.1)
+else:
+    plt.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
+    plt.xticks([1, 2], ['steady', 't=10s'])
+    #plt.ylim(top=1, bottom=-0.1)
+plt.ylim(top=1, bottom=-0.05)
 plt.title(filename + " - link unavailability")
 #plt.xlabel("t (s)")
-plt.xticks([1, 2, 3,4], ['steady', 't=5s', 't=10s', 't=15s'])
 plt.ylabel(" t(s)")
-plt.ylim(top=0.5, bottom=-0.1)
 #plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
+
 #plt.legend(loc='upper left')
 
 
