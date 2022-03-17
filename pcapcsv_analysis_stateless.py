@@ -33,19 +33,29 @@ for file in os.listdir(path):
     if (file.endswith(".csv")):# and ('v1' in file):
         files_array.append(file)
 files_array.sort()
-#files_array=files_array[0:1]
+files_array=files_array[0:10]
 
-remove_from_plot = []
-remove_from_plot.extend(list(range(10,60)))
-#remove_from_plot.extend(list(range(40,50)))
+remove_from_plot=[]
+#remove_from_plot.extend(list(range(0,10)))
+#remove_from_plot.extend(list(range(16,20)))
 
 #parameters for automatic filename generation
 no_files = 1
 #the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
 #filename = 'csv4gpython_'
-filename = 'Optical Switching v1'
+if 'MBB' in path:
+    filename= 'Make before break v2'
+elif 'OST' in path:
+    filename = 'Optical switching v1'
+
+if 'Dual' in path:
+    filename+='- Bandwidth steering '
+
+#filename = 'Make before break - Bandwidth steering v1'
 extension = '.csv'
 
+BOXPLOT_MBB_SPACED = False
+STEADY_INDEX = 2
 LABEL_RIGHT_LIMIT = 3 # last element of filename standard to include in plot label
 TEST_DURATION = 20
 RECONFIGURATION = 10
@@ -70,15 +80,16 @@ desired_df_columns = ['tcp.time_relative',
                       'tcp.analysis.retransmission']
 
 #factors for modifying the rolling window size of moving average
-ROLLING_FACTOR=2 # used for calculating average throughput. rolling 1 second means SMA 1, rolling N means SMA 1/N seconds
+ROLLING_FACTOR=1 # used for calculating average throughput. rolling 1 second means SMA 1, rolling N means SMA 1/N seconds
 ALPHA=0.5
-ROLLING_FACTOR_RTT=2 # used for calculating average RTT. rolling 1 second means SMA 1, rolling N means SMA 1/N seconds
+ROLLING_FACTOR_RTT=2 # used for calculating average RTT. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
+ROLLING_FACTOR_LOSS = 1 #used for calculating average loss. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
 
 TCP_WINDOW_SIZE = 65535  # in Bytes
 Gbs_scale_factor = 1000000000
 ms_scale_factor = 1000
 kbps_scale_factor = 1000
-stream_index = 1
+#stream_index = 1
 
 
 
@@ -114,10 +125,10 @@ def set_time_float_to_int(df_array, column='tcp.time_relative'):
     print('converting time axis to int')
     return df_out
 
-def find_pkt_sent(df_array,stream_index=1):
+def find_pkt_sent(df_array,stream_index):
     pkt_sent_array = []
-    for df in df_array:
-        series=df[df['tcp.stream'] == stream_index].groupby('tcp.time_relative')['ip.src'].count()
+    for i, df in enumerate(df_array):
+        series=df[df['tcp.stream'] == stream_index[i]].groupby('tcp.time_relative')['ip.src'].count()
         pkt_sent_array.append(series)
     print('finding pkt sent series')
     return pkt_sent_array
@@ -131,16 +142,55 @@ def find_rolling_sma_window(pkt_sent_array):
     return rolling_window_array
 
 
-# filter traffic sent from vm1 to vm4, drop the rest. currently not used.
-def filter_packets_vm1_vm4(df_array):
-    df_out = []
+# filter traffic of the actual tcp stream, drop the rest.
+# the pcap file show the data stream on ID 0 or 1. Must identify and filter the right tcp stream ID.
+# https://datagy.io/python-get-dictionary-key-with-max-value/
+def find_stream_index(df_array):
+    stream_index=[]
     for df in df_array:
-        df = df[(df['ip.src'] == '10.0.0.1')
-                & (df['ip.dst'] == '10.0.0.4')
-                & (df['tcp.stream'] == stream_index)]
+        # get unique Stream IDs
+        packets_per_stream = {}  # key: unique stream_id, value: packets per stream
+        for index in df['tcp.stream'].unique():
+            packets_per_stream[index] = df[df['tcp.stream'] == index]['tcp.stream'].count()
+        #max_stream_index_value = max(packets_per_stream.values()) #to obtain the maximum value in dict.values()
+        stream_index.append(max(packets_per_stream, key=packets_per_stream.get)) #obtain the key of the max value in dict.values()
+    return stream_index
+
+def filter_packets(df_array, stream_index):
+    df_out = []
+    for i, df in enumerate(df_array):
+        df = df[ #((df['ip.src'] == '10.0.0.1') | (df['ip.src'] == '10.0.0.2'))
+                #&((df['ip.dst'] == '10.0.0.4') | (df['ip.dst'] == '10.0.0.3'))
+                (df['tcp.stream'] == stream_index[i])]
         df_out.append(df)
     return df_out
 
+
+def find_packet_loss(df_array):
+    df_out=[]
+    for i, df in enumerate(df_array):
+        #df['tcp.analysis.retransmission'] = df['tcp.analysis.retransmission'].replace(df['tcp.analysis.retransmission'].unique()[0], 0)
+        #try:
+        #    df['tcp.analysis.retransmission'] = df['tcp.analysis.retransmission'].replace(df['tcp.analysis.retransmission'].unique()[1], 1)
+        #except:
+        #    print('No tcp.analysis.retransmissions found')
+        df['loss'] = \
+        df[df['tcp.time_relative'].notna()]['tcp.analysis.retransmission'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).sum() / \
+        df[df['tcp.time_relative'].notna()]['tcp.analysis.retransmission'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).count() * 100
+        df_out.append(df)
+    return df_out
+
+def set_retransmission_values(df_array):
+    df_out=[]
+    for i, df in enumerate(df_array):
+        df['tcp.analysis.retransmission'] = df['tcp.analysis.retransmission'].replace(df['tcp.analysis.retransmission'].unique()[0], 0)
+        try:
+            # second element should be a weird string of len 9, for tcp.analysis.retransmission
+            df['tcp.analysis.retransmission'] = df['tcp.analysis.retransmission'].replace(df['tcp.analysis.retransmission'].unique()[1], 1)
+        except:
+            print('No tcp.analysis.retransmissions found')
+        df_out.append(df)
+    return df_out
 
 '''
 Processing section
@@ -148,10 +198,17 @@ Processing section
 if len(files_array)==0:
     files_array = get_filenames()
 df_array = read_files(files_array)
+stream_index=find_stream_index(df_array)
+#df_array=filter_packets(df_array, stream_index)
 df_array_time_int = set_time_float_to_int(df_array)
-pkt_sent_array = find_pkt_sent(df_array_time_int)
+pkt_sent_array = find_pkt_sent(df_array_time_int, stream_index)
 rolling_sma_window_array = find_rolling_sma_window(pkt_sent_array)
 df_array = read_files(files_array)
+df_array=filter_packets(df_array,stream_index)
+df_array=set_retransmission_values(df_array)
+df_array=find_packet_loss(df_array)
+
+#df_array[3]['tcp.time_relative']=df_array[3]['tcp.time_relative']-1
 '''
 *********************************************************************
 plotting
@@ -169,14 +226,12 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR_RTT)).mean() * ms_scale_factor,
-            #label=files_array[i]
             label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
-            #https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
+            # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
             marker=markers[i%len(markers)],
             markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
             markersize=MARKER_SIZE
         )
-        #plt.plot(df['tcp.time_relative'], df['tcp.time_delta'] * ms_scale_factor, label='test ' + str(i))
 plt.title(filename + " - RTT")
 plt.xlabel("t (s)")
 plt.ylabel("RTT (ms)")
@@ -244,8 +299,7 @@ plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     df['link_unavailable'] = df['tcp.time_relative'].diff()
     if i not in remove_from_plot:
-        #df['link_unavailable'] = df['tcp.time_relative'].diff()
-        #.diff returns the difference between previous row by default, useful to find all the discontinuities in time
+        # .diff returns the difference between previous row by default, useful to find all the discontinuities in time
         plt.plot(df['tcp.time_relative'],
                     df['link_unavailable'],
                     label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
@@ -261,33 +315,6 @@ plt.ylabel("Link unavailability (s)")
 plt.grid('on')
 plt.legend(loc='upper right')
 
-'''
-# -----------------------------------
-# plot TCP window size raw data
-# -----------------------------------
-plt.figure()
-# plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
-for i, df in enumerate(df_array):
-    if i not in remove_from_plot:
-        plt.scatter(df['tcp.time_relative'], (df['tcp.window_size']),
-                    #label=files_array[i]
-                    label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1))
-                    )
-        #plt.plot(
-        #    df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
-        #    (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
-        #    label=files_array[i]
-        #)
-plt.title(filename + " - TCP window size ")
-plt.xlabel("t (s)")
-plte.grid('on')
-plt.ylim(top=66000, bottom=0)
-plt.xlim(right=RECONFIGURATION+2, left=RECONFIGURATION-2)
-plt.ylabel("TCP window size (Bytes)")
-plt.grid('on')
-plt.legend(loc='lower left')
-'''
-
 # -----------------------------------
 # plot Throughput as the ratio of the moving average of TCP segment length / RTT
 # -----------------------------------
@@ -296,10 +323,6 @@ plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 # https://www.geeksforgeeks.org/how-to-calculate-moving-average-in-a-pandas-dataframe/
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        # plt.scatter(df2['tcp.time_relative'], df2['Throughput'])
-        # plt.plot(df['tcp.time_relative'], 8 * ((df['tcp.len'].rolling(10000).mean()) / (
-        #    df['tcp.time_delta'].rolling(10000).mean())) / Gbs_scale_factor, label='test ' + str(i))
-        # plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len']/(df2['tcp.time_delta']).rolling(1000).mean() / 1024000))
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean()) /
@@ -308,8 +331,6 @@ for i, df in enumerate(df_array):
               (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(span=int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean())) / Gbs_scale_factor,
             #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].ewm(alpha=ALPHA).mean()) /
             #     (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(alpha=ALPHA).mean())) / Gbs_scale_factor,
-
-            #label=files_array[i]
             label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
@@ -338,10 +359,8 @@ for i, df in enumerate(df_array):
     # convert time index to integer
     # https://www.geeksforgeeks.org/convert-floats-to-integers-in-a-pandas-dataframe/
     print('calculating packet loss on df: ' + str(i))
-    # df = df.dropna()
-
     # drop na values on the column that we are going to convert to integer
-    # https: // stackoverflow.com / questions / 13413590 / how - to - drop - rows - of - pandas - dataframe - whose - value - in -a - certain - column - is -nan
+    # https://stackoverflow.com/questions/13413590/how-to-drop-rows-of-pandas-dataframe-whose-value-in-a-certain-column-is-nan
     df = df[df['tcp.time_relative'].notna()]
     df['tcp.time_relative'] = df['tcp.time_relative'].astype(int)
     # print(df.keys())
@@ -362,13 +381,15 @@ for i, df in enumerate(df_array):
     pkt_sent_array_series.append(pkt_sent)
     # add all the tcp.analysis.retransmissions per second, as a metric for packet loss
     pkt_retransmit = df.groupby('tcp.time_relative')['tcp.analysis.retransmission'].sum()
+    #pkt_retransmit = df[df['tcp.analysis.retransmission']==1].groupby('tcp.time_relative')['tcp.analysis.retransmission'].count()
     pkt_retransmit_array_series.append(pkt_retransmit)
     # calculate the packet loss metric
     pkt_loss_ratio_array_series.append(100 * pkt_retransmit / pkt_sent)
+    #pkt_loss_ratio_array_series.append(100 * pkt_retransmit / rolling_sma_window_array[i])
 
 
 # Now plot the results.
-'''
+
 # -----------------------------------
 # Plot sent packets per second
 # -----------------------------------
@@ -389,9 +410,9 @@ plt.ylabel("Packets / second")
 plt.xlim(right=TEST_DURATION-1, left=0)
 plt.grid('on')
 plt.legend(loc='lower left')
-'''
 
-'''
+
+
 # -----------------------------------
 # Plot retransmitted packets per second
 # -----------------------------------
@@ -411,7 +432,7 @@ plt.ylabel("Packets / second")
 plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 plt.legend(loc='upper left')
-'''
+
 
 # -----------------------------------
 # Plot packet loss metric
@@ -432,7 +453,7 @@ plt.ylabel("%")
 plt.ylim(top=2, bottom=-0.1)
 plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
-plt.legend(loc='upper left')
+plt.legend(loc='upper right')
 
 '''
 plt.figure()
@@ -462,22 +483,34 @@ plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
 df_loss=[[],[],[],[]]
 for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     #if i not in remove_from_plot:
-    df_loss[0].append(pkt_loss_ratio[2])  # steady state
-    if 'mbb' in files_array[i]:
-        df_loss[1].append(pkt_loss_ratio[5])  # make_before_break 1
-        df_loss[3].append(pkt_loss_ratio[15]) # make_before_break 2
-        df_loss[2].append(pkt_loss_ratio[10])  # optical reconfiguration
-    else:
-        #if max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]) <20:
-        df_loss[2].append(max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]))  # optical reconfiguration
+    try:
+        df_loss[0].append(pkt_loss_ratio[STEADY_INDEX])  # steady state
 
+        if 'mbb' in files_array[i]:
+            #single
+            #df_loss[1].append(pkt_loss_ratio[5])  # make_before_break 1
+            #df_loss[3].append(pkt_loss_ratio[15]) # make_before_break 2
+            #df_loss[2].append(pkt_loss_ratio[10])  # optical reconfiguration
+            #dual
+            df_loss[1].append(max(pkt_loss_ratio[4],pkt_loss_ratio[5],pkt_loss_ratio[6]))  # make_before_break 1
+            df_loss[3].append(max(pkt_loss_ratio[14],pkt_loss_ratio[15],pkt_loss_ratio[16])) # make_before_break 2
+            df_loss[2].append(max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]))  # optical reconfiguration
+        else:
+            #if max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]) <20:
+            df_loss[2].append(max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]))  # optical reconfiguration
+    except:
+        print('error calculating loss on df'+str(i))
 print('packet loss steady state len: '+str(len(df_loss[0])))
 print('packet loss optical switch reconfiguration t=10 len: ' + str(len(df_loss[2])))
 if 'mbb' in files_array[0]:
     print('packet loss mbb 1 t=5 len: ' + str(len(df_loss[1])))
     print('packet loss mbb 2 t=15 len: ' + str(len(df_loss[3])))
-    plt.boxplot(df_loss)
-    plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+    if BOXPLOT_MBB_SPACED:
+        plt.boxplot(df_loss)
+        plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+    else:
+        plt.boxplot([df_loss[0], df_loss[2]])
+        plt.xticks([1, 2], ['steady', 't=10s'])
     #plt.ylim(top=2, bottom=-0.1)
 else:
     plt.boxplot([df_loss[0], df_loss[2]])
@@ -502,14 +535,31 @@ for i, df in enumerate(df_array):
     df = df[df['tcp.time_relative'].notna()] # very important line. Otherwise an exception can be raised.
     df['tcp.time_relative'] = df['tcp.time_relative'].astype(int)
     # print(df[['tcp.time_relative', 'link_unavailable']]) #for debugging purposes
-    df_link_unavailable[0].extend(df[(df['tcp.time_relative'] == 2)& (df['link_unavailable']>0.006)]['link_unavailable'])  # steady state, bypass sampling rate
+    df_link_unavailable[0].extend(df[(df['tcp.time_relative'] == STEADY_INDEX) & (df['link_unavailable']>0.006)]['link_unavailable'])  # steady state, bypass sampling rate
 
     if 'mbb' in files_array[i]:
-        df_link_unavailable[1].extend(df[(df['tcp.time_relative']==5)  & (df['link_unavailable']>0.03)]['link_unavailable'])  # make_before_break 1
-        df_link_unavailable[3].extend(df[(df['tcp.time_relative']==15) & (df['link_unavailable']>0.005) & (df['link_unavailable']<0.2)]['link_unavailable']) # make_before_break 2
-        df_link_unavailable[2].extend(df[(df['tcp.time_relative'] == 10) & (df['link_unavailable'] > 0.005)]['link_unavailable'])  # optical reconfiguration, bypass sampling rate
+        #single
+        #df_link_unavailable[1].extend(df[(df['tcp.time_relative']==5)  & (df['link_unavailable']>0.03)]['link_unavailable'])  # make_before_break 1
+        #df_link_unavailable[3].extend(df[(df['tcp.time_relative']==15) & (df['link_unavailable']>0.005) & (df['link_unavailable']<0.2)]['link_unavailable']) # make_before_break 2
+        #df_link_unavailable[2].extend(df[(df['tcp.time_relative'] == 10) & (df['link_unavailable'] > 0.005)]['link_unavailable'])  # optical reconfiguration, bypass sampling rate
+        #dual (bandwidth steering)
+        try:
+            df_link_unavailable[1].append(max(df[(df['tcp.time_relative']>=4)  & (df['tcp.time_relative']<=6)  & (df['link_unavailable']>0.03)]['link_unavailable']))  # make_before_break 1
+        except:
+            print('error on link unavailable mbb 1')
+        try:
+            df_link_unavailable[3].append(max(df[(df['tcp.time_relative']>=14) & (df['tcp.time_relative']<=16) & (df['link_unavailable']>0.005) & (df['link_unavailable']<0.2)]['link_unavailable'])) # make_before_break 2
+        except:
+            print('error on link unavailable mbb 2')
+        try:
+            df_link_unavailable[2].append(max(df[(df['tcp.time_relative']>=9) & (df['tcp.time_relative']<=11) & (df['link_unavailable'] > 0.005)]['link_unavailable']))  # optical reconfiguration, bypass sampling rate
+        except:
+            print('error on link unavailable ost 1')
     else:
-        df_link_unavailable[2].append(max(df[(df['tcp.time_relative'] >=9) & (df['tcp.time_relative'] <= 11) & (df['link_unavailable'] > 0.006)]['link_unavailable']))  # optical reconfiguration, bypass sampling rate
+        try:
+            df_link_unavailable[2].append(max(df[(df['tcp.time_relative'] >=9) & (df['tcp.time_relative'] <= 11) & (df['link_unavailable'] > 0.006)]['link_unavailable']))  # optical reconfiguration, bypass sampling rate
+        except:
+            print ("df link unavailable error")
     #print(max(df[(df['tcp.time_relative'] >=9) & (df['tcp.time_relative'] <= 11) & (df['link_unavailable'] > 0.005)]['link_unavailable']))
     #df_link_unavailable[1].extend(df[(df['tcp.time_relative'] ==  5)]['link_unavailable'])  # make_before_break 1
     #df_link_unavailable[2].extend(df[(df['tcp.time_relative'] == 10)]['link_unavailable'])  # optical reconfiguration
@@ -521,8 +571,16 @@ print("link unavailable t=10 len: "+ str(len(df_link_unavailable[2]))) #for debu
 if 'mbb' in files_array[0]:
     print("link unavailable t=5 len: " + str(len(df_link_unavailable[1])))  # for debugging purposes
     print("link unavailable t=15 len: " + str(len(df_link_unavailable[3])))  # for debugging purposes
-    plt.boxplot(df_link_unavailable)
-    plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+
+    if BOXPLOT_MBB_SPACED:
+        # t=5, t=10, t=15
+        plt.boxplot(df_link_unavailable)
+        plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+    else:
+        # t=steady,t=10
+        plt.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
+        plt.xticks([1, 2], ['steady', 't=10s'])
+
     #plt.ylim(top=1, bottom=-0.1)
 else:
     plt.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
@@ -530,7 +588,6 @@ else:
     #plt.ylim(top=1, bottom=-0.1)
 plt.ylim(top=1, bottom=-0.05)
 plt.title(filename + " - link unavailability")
-#plt.xlabel("t (s)")
 plt.ylabel(" t(s)")
 #plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
@@ -563,6 +620,136 @@ plt.xlim(right=TEST_DURATION-1, left=1)
 plt.grid('on')
 plt.legend(loc='lower left')
 '''
+
+'''
+# -----------------------------------
+# plot packet loss as the ratio of the retransmitted packets rolling / packets sent per second rolling
+# -----------------------------------
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
+# create a new entry in the dataframe for the throughput with Moving Average
+# https://www.geeksforgeeks.org/how-to-calculate-moving-average-in-a-pandas-dataframe/
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.plot(
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+            df[df['tcp.time_relative'].notna()]['loss'],
+            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            marker=markers[i % len(markers)],
+            markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
+        )
+
+plt.title(filename + " - Packet loss (%) WND/RTT")
+plt.xlabel("t (s)")
+plt.ylabel("Packet loss (%)")
+plt.ylim(top=10, bottom=-0.1)
+plt.xlim(right=TEST_DURATION, left=1.1)
+plt.grid('on')
+#plt.legend(loc='upper right')
+plt.legend(loc='lower right')
+'''
+
+'''
+# -----------------------------------
+# plot retransmitted packets rolling
+# -----------------------------------
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
+# create a new entry in the dataframe for the throughput with Moving Average
+# https://www.geeksforgeeks.org/how-to-calculate-moving-average-in-a-pandas-dataframe/
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.plot(
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+            df[df['tcp.time_relative'].notna()]['tcp.analysis.retransmission'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).sum(),
+            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            marker=markers[i % len(markers)],
+            markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
+        )
+
+plt.title(filename + " - Packet retransmission rolling")
+plt.xlabel("t (s)")
+plt.ylabel("Packet loss (%)")
+plt.ylim(top=10, bottom=-0.1)
+plt.xlim(right=TEST_DURATION, left=1.1)
+plt.grid('on')
+#plt.legend(loc='upper right')
+plt.legend(loc='lower right')
+'''
+
+
+'''
+# -----------------------------------
+# plot sent packets rolling
+# -----------------------------------
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
+# create a new entry in the dataframe for the throughput with Moving Average
+# https://www.geeksforgeeks.org/how-to-calculate-moving-average-in-a-pandas-dataframe/
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.plot(
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).count(),
+            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            marker=markers[i % len(markers)],
+            markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
+        )
+
+plt.title(filename + " - Packet sent rolling")
+plt.xlabel("t (s)")
+plt.ylabel("Packet loss (%)")
+plt.ylim(top=10, bottom=-0.1)
+plt.xlim(right=TEST_DURATION, left=1.1)
+plt.grid('on')
+#plt.legend(loc='upper right')
+plt.legend(loc='lower right')
+'''
+
+
+# -----------------------------------
+# Plot packet loss as box plot - based on new packet loss SMA rolling sum of retransmissions / pkt sent metric
+# -----------------------------------
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
+df_loss=[[],[],[],[]]
+for i, df in enumerate(df_array):
+    #if i not in remove_from_plot:
+
+    #try:
+    df_loss[0].append(max(df[df['tcp.time_relative']< STEADY_INDEX]['loss']))  # steady state
+
+    if 'mbb' in files_array[i]:
+        df_loss[1].append(max(df[(df['tcp.time_relative']>=4) & (df['tcp.time_relative']<=6)]['loss']))  # make_before_break 1
+        df_loss[3].append(max(df[(df['tcp.time_relative']>=14) & (df['tcp.time_relative']<=16)]['loss'])) # make_before_break 2
+        df_loss[2].append(max(df[(df['tcp.time_relative']>=9) & (df['tcp.time_relative']<=12)]['loss']))  # optical reconfiguration
+    else:
+        #if max(pkt_loss_ratio[9],pkt_loss_ratio[10],pkt_loss_ratio[11]) <20:
+        df_loss[2].append(max(df[(df['tcp.time_relative']>=9) & (df['tcp.time_relative']<=11)]['loss']))  # optical reconfiguration
+    #except:
+    #    print('error calculating loss on df'+str(i))
+print('packet loss steady state len: '+str(len(df_loss[0])))
+print('packet loss optical switch reconfiguration t=10 len: ' + str(len(df_loss[2])))
+if 'mbb' in files_array[0]:
+    print('packet loss mbb 1 t=5 len: ' + str(len(df_loss[1])))
+    print('packet loss mbb 2 t=15 len: ' + str(len(df_loss[3])))
+    if BOXPLOT_MBB_SPACED:
+        plt.boxplot(df_loss)
+        plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+    else:
+        plt.boxplot([df_loss[0], df_loss[2]])
+        plt.xticks([1, 2], ['steady', 't=10s'])
+    #plt.ylim(top=2, bottom=-0.1)
+else:
+    plt.boxplot([df_loss[0], df_loss[2]])
+    plt.xticks([1, 2], ['steady', 't=10s'])
+    #plt.ylim(top=20, bottom=-0.1)
+plt.ylim(top=2, bottom=-0.1)
+plt.title(filename + " - packet loss ratio")
+#plt.xlabel("t (s)")
+plt.ylabel("%")
+#plt.xlim(right=TEST_DURATION, left=0)
+plt.grid('on')
+#plt.legend(loc='upper left')
 
 
 plt.show()
