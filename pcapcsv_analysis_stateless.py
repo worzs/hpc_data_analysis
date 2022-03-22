@@ -33,20 +33,24 @@ for file in os.listdir(path):
     if (file.endswith(".csv")):# and ('v1' in file):
         files_array.append(file)
 files_array.sort()
-files_array=files_array[0:10]
+
+TEST_ID=1
+#files_array=[files_array[TEST_ID],files_array[TEST_ID+50]]
+files_array=files_array[10:20]
+
 
 remove_from_plot=[]
 #remove_from_plot.extend(list(range(0,10)))
-#remove_from_plot.extend(list(range(16,20)))
+#remove_from_plot.extend(list(range(20,50)))
 
 #parameters for automatic filename generation
 no_files = 1
 #the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
-#filename = 'csv4gpython_'
+filename = ''
 if 'MBB' in path:
-    filename= 'Make before break v2'
+    filename+= 'Make before break v3'
 elif 'OST' in path:
-    filename = 'Optical switching v1'
+    filename += 'Optical switching v1'
 
 if 'Dual' in path:
     filename+='- Bandwidth steering '
@@ -73,22 +77,28 @@ BOTTOM_BW_AXIS = 0
 desired_df_columns = ['tcp.time_relative',
                       'ip.src',
                       'ip.dst',
+                      'tcp.srcport',
+                      'tcp.dstport',
                       'tcp.stream',
                       'tcp.time_delta',
                       'tcp.len',
                       'tcp.window_size',
-                      'tcp.analysis.retransmission']
+                      'tcp.analysis.retransmission',
+                      'tcp.analysis.ack_rtt']
 
 #factors for modifying the rolling window size of moving average
 ROLLING_FACTOR=1 # used for calculating average throughput. rolling 1 second means SMA 1, rolling N means SMA 1/N seconds
 ALPHA=0.5
-ROLLING_FACTOR_RTT=2 # used for calculating average RTT. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
+ROLLING_FACTOR_TIME_DELTA=2 # used for calculating average RTT. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
+ROLLING_FACTOR_RTT_ACK=10 # used for calculating average RTT. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
+
 ROLLING_FACTOR_LOSS = 1 #used for calculating average loss. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
 
 TCP_WINDOW_SIZE = 65535  # in Bytes
 Gbs_scale_factor = 1000000000
 ms_scale_factor = 1000
 kbps_scale_factor = 1000
+SPLIT_FILENAME_CHAR=')'
 #stream_index = 1
 
 
@@ -208,7 +218,7 @@ df_array=filter_packets(df_array,stream_index)
 df_array=set_retransmission_values(df_array)
 df_array=find_packet_loss(df_array)
 
-#df_array[3]['tcp.time_relative']=df_array[3]['tcp.time_relative']-1
+#df_array[0]['tcp.time_relative']=df_array[0]['tcp.time_relative']-1
 '''
 *********************************************************************
 plotting
@@ -220,13 +230,14 @@ print('-------plotting-------')
 # plot RTT, vertical axis in ms.
 # -----------------------------------
 plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
-# plt.scatter(df2['tcp.time_relative'], 1000*(df2['tcp.time_delta'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
         plt.plot(
-            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
-            df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR_RTT)).mean() * ms_scale_factor,
-            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.time_relative'],
+            df[(df['tcp.time_relative'].notna())
+                       & (df['tcp.analysis.ack_rtt'].notna())
+                       & (df['tcp.srcport']==5201)]['tcp.analysis.ack_rtt'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_RTT_ACK)).mean() * ms_scale_factor,
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
             # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
             marker=markers[i%len(markers)],
             markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
@@ -235,6 +246,89 @@ for i, df in enumerate(df_array):
 plt.title(filename + " - RTT")
 plt.xlabel("t (s)")
 plt.ylabel("RTT (ms)")
+plt.ylim(top=10, bottom=-0.1)
+plt.xlim(right=TEST_DURATION, left=1.1)
+plt.grid('on')
+plt.legend(loc='upper right')
+
+# -----------------------------------
+# plot TCP window size, vertical axis in bits.
+# -----------------------------------
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.plot(
+            df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.time_relative'],
+             df[(df['tcp.time_relative'].notna())
+                       & (df['tcp.analysis.ack_rtt'].notna())
+                       & (df['tcp.srcport']==5201)]['tcp.window_size'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_TIME_DELTA)).mean() / kbps_scale_factor ,
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
+            marker=markers[i%len(markers)],
+            markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
+        )
+plt.title(filename + " - Window size")
+plt.xlabel("t (s)")
+plt.ylabel("Window size (b)")
+#plt.ylim(top=10, bottom=-0.1)
+plt.xlim(right=TEST_DURATION, left=1.1)
+plt.grid('on')
+plt.legend(loc='upper right')
+
+
+# -----------------------------------
+# plot throughput v1 window size / rtt
+# -----------------------------------
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.plot(
+            df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.time_relative'],
+            #8* df[(df['tcp.time_relative'].notna())
+            #           & (df['tcp.analysis.ack_rtt'].notna())
+            #           & (df['tcp.srcport']==5201)]['tcp.window_size'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_TIME_DELTA)).mean() / kbps_scale_factor ,
+
+            8 * ((df[(df['tcp.time_relative'].notna())
+                       & (df['tcp.analysis.ack_rtt'].notna())
+                       & (df['tcp.srcport']==5201)]['tcp.window_size'].ewm(
+                span=int(rolling_sma_window_array[i] / ROLLING_FACTOR_RTT_ACK)).mean()) /
+                 (df[(df['tcp.time_relative'].notna())
+                       & (df['tcp.analysis.ack_rtt'].notna())
+                       & (df['tcp.srcport']==5201)]['tcp.analysis.ack_rtt'].ewm(
+                     span=int(rolling_sma_window_array[i] / ROLLING_FACTOR_RTT_ACK)).mean())) / Gbs_scale_factor,
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
+            marker=markers[i%len(markers)],
+            markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
+        )
+plt.title(filename + " - Throughput")
+plt.xlabel("t (s)")
+plt.ylabel("Throughput (Gbps)")
+#plt.ylim(top=10, bottom=-0.1)
+plt.xlim(right=TEST_DURATION, left=1.1)
+plt.grid('on')
+plt.legend(loc='upper right')
+
+# -----------------------------------
+# plot tcp.time_delta, iperf data rate, vertical axis in ms.
+# -----------------------------------
+plt.figure(figsize=(PIXEL_W*px, PIXEL_H*px))
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        plt.plot(
+            df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
+            df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR_TIME_DELTA)).mean() * ms_scale_factor,
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
+            marker=markers[i%len(markers)],
+            markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
+        )
+plt.title(filename + " - dt")
+plt.xlabel("t (s)")
+plt.ylabel("dt (ms)")
 plt.ylim(top=0.2, bottom=0)
 plt.xlim(right=TEST_DURATION, left=1.1)
 plt.grid('on')
@@ -252,7 +346,7 @@ for i, df in enumerate(df_array):
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
             #label=files_array[i]
-            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
@@ -266,6 +360,8 @@ plt.ylabel("TCP Segment len (KBytes)")
 plt.grid('on')
 plt.legend(loc='lower left')
 
+
+
 '''
 # -----------------------------------
 # plot TCP segment length raw data
@@ -276,7 +372,7 @@ for i, df in enumerate(df_array):
     if i not in remove_from_plot:
         plt.scatter(df['tcp.time_relative'], (df['tcp.len']),
                     #label=files_array[i]
-                    label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1))
+                    label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1))
                     )
         #plt.plot(
         #    df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
@@ -302,14 +398,14 @@ for i, df in enumerate(df_array):
         # .diff returns the difference between previous row by default, useful to find all the discontinuities in time
         plt.plot(df['tcp.time_relative'],
                     df['link_unavailable'],
-                    label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                    label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
                     marker=markers[i % len(markers)],
                     markersize=MARKER_SIZE
                     )
 plt.title(filename + " - Link unavailability ")
 plt.xlabel("t (s)")
 plt.grid('on')
-plt.ylim(top=0.5, bottom=0)
+plt.ylim(top=1, bottom=0.02)
 plt.xlim(right=TEST_DURATION, left=1.1)
 plt.ylabel("Link unavailability (s)")
 plt.grid('on')
@@ -331,7 +427,7 @@ for i, df in enumerate(df_array):
               (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(span=int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean())) / Gbs_scale_factor,
             #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].ewm(alpha=ALPHA).mean()) /
             #     (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(alpha=ALPHA).mean())) / Gbs_scale_factor,
-            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
@@ -390,6 +486,7 @@ for i, df in enumerate(df_array):
 
 # Now plot the results.
 
+'''
 # -----------------------------------
 # Plot sent packets per second
 # -----------------------------------
@@ -398,7 +495,7 @@ for i, pkt_sent in enumerate(pkt_sent_array_series):
     if i not in remove_from_plot:
         plt.plot(pkt_sent,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S ,
                  markersize=MARKER_SIZE
@@ -410,9 +507,10 @@ plt.ylabel("Packets / second")
 plt.xlim(right=TEST_DURATION-1, left=0)
 plt.grid('on')
 plt.legend(loc='lower left')
+'''
 
 
-
+'''
 # -----------------------------------
 # Plot retransmitted packets per second
 # -----------------------------------
@@ -421,7 +519,7 @@ for i, pkt_retransmit in enumerate(pkt_retransmit_array_series):
     if i not in remove_from_plot:
         plt.plot(pkt_retransmit,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S,
                  markersize=MARKER_SIZE
@@ -432,7 +530,7 @@ plt.ylabel("Packets / second")
 plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 plt.legend(loc='upper left')
-
+'''
 
 # -----------------------------------
 # Plot packet loss metric
@@ -442,7 +540,7 @@ for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     if i not in remove_from_plot:
         plt.plot(pkt_loss_ratio,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S,
                  markersize=MARKER_SIZE
@@ -450,8 +548,8 @@ for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
 plt.title(filename + " - packet loss ratio")
 plt.xlabel("t (s)")
 plt.ylabel("%")
-plt.ylim(top=2, bottom=-0.1)
-plt.xlim(right=TEST_DURATION, left=0)
+plt.ylim(top=10, bottom=-0.1)
+plt.xlim(right=TEST_DURATION-1, left=1)
 plt.grid('on')
 plt.legend(loc='upper right')
 
@@ -462,7 +560,7 @@ for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     if i not in remove_from_plot:
         plt.stem(pkt_loss_ratio,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
                  #marker=markers[i % len(markers)],
                  #markevery=MARKER_EVERY_S,
                  #markersize=MARKER_SIZE
@@ -569,13 +667,12 @@ print("link unavailable steady state len: "+ str(len(df_link_unavailable[0]))) #
 print("link unavailable t=10 len: "+ str(len(df_link_unavailable[2]))) #for debugging purposes
 
 if 'mbb' in files_array[0]:
-    print("link unavailable t=5 len: " + str(len(df_link_unavailable[1])))  # for debugging purposes
-    print("link unavailable t=15 len: " + str(len(df_link_unavailable[3])))  # for debugging purposes
-
     if BOXPLOT_MBB_SPACED:
         # t=5, t=10, t=15
         plt.boxplot(df_link_unavailable)
         plt.xticks([1, 2, 3, 4], ['steady', 't=5s', 't=10s', 't=15s'])
+        print("link unavailable t=5 len: " + str(len(df_link_unavailable[1])))  # for debugging purposes
+        print("link unavailable t=15 len: " + str(len(df_link_unavailable[3])))  # for debugging purposes
     else:
         # t=steady,t=10
         plt.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
@@ -607,7 +704,7 @@ for i, pkt_sent in enumerate(pkt_sent_array_series):
         #updated formula: pkt_sent (packets/second) * effective TCP length (KBytes/packet) * 8 (bits/Byte) / Gbs_scale_factor
         plt.plot(pkt_sent * (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean()).mean() * 8 / Gbs_scale_factor ,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S,
                  markersize=MARKER_SIZE
@@ -633,7 +730,7 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['loss'],
-            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
@@ -661,7 +758,7 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['tcp.analysis.retransmission'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).sum(),
-            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
@@ -690,7 +787,7 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).count(),
-            label=('|'.join(files_array[i].split('|')[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
@@ -706,7 +803,7 @@ plt.grid('on')
 plt.legend(loc='lower right')
 '''
 
-
+'''
 # -----------------------------------
 # Plot packet loss as box plot - based on new packet loss SMA rolling sum of retransmissions / pkt sent metric
 # -----------------------------------
@@ -750,6 +847,6 @@ plt.ylabel("%")
 #plt.xlim(right=TEST_DURATION, left=0)
 plt.grid('on')
 #plt.legend(loc='upper left')
-
+'''
 
 plt.show()
