@@ -18,15 +18,6 @@ import json
 parameters = json.load(open('parameters.json'))
 path = parameters["datapath"]
 
-df_headers = ['tcp.time_relative',
-              'ip.src',
-              'ip.dst',
-              'tcp.stream',
-              'tcp.time_delta',
-              'tcp.len',
-              'tcp.window_size',
-              'tcp.analysis.retransmission']
-
 # get the file list in the directory
 path_files = os.listdir(path)
 
@@ -49,7 +40,9 @@ for pcap_file in os.listdir(path):
                      '-e', 'tcp.len', '-e', 'tcp.seq', '-e', 'tcp.nxtseq',
                      '-e', 'tcp.time_delta', '-e', 'tcp.time_relative', '-e', 'tcp.stream',
                      '-e', 'tcp.analysis.retransmission', '-e', 'tcp.analysis.lost_segment',
-                     '-e', 'tcp.window_size', '-q']
+                     '-e', 'tcp.window_size',
+                     '-e', 'tcp.analysis.ack_rtt',
+                     '-q']
              with open(path+filename,"w") as outfile:
                  print("writing: " + filename)
                  subprocess.run(args, stdout=outfile, check=True)
