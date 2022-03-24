@@ -42,6 +42,7 @@ for pcap_file in os.listdir(path):
                      '-e', 'tcp.analysis.retransmission', '-e', 'tcp.analysis.lost_segment',
                      '-e', 'tcp.window_size',
                      '-e', 'tcp.analysis.ack_rtt',
+                     '-e', 'tcp.analysis.bytes_in_flight',
                      '-q']
              with open(path+filename,"w") as outfile:
                  print("writing: " + filename)
