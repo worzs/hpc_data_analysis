@@ -17,10 +17,18 @@ import math
 import pandas as pd
 import matplotlib
 matplotlib.use('Qt5Agg', force=True) #fix for use qt5agg backend for matplotlib. Use $pip install pyqt5
+# https://python-graph-gallery.com/custom-fonts-in-matplotlib
+matplotlib.rcParams['font.family'] = 'cmr10' #for labels, titles, and other text
+matplotlib.rcParams['mathtext.fontset'] = 'cm'
+matplotlib.rcParams['font.size'] = 13
 import matplotlib.pyplot as plt
 from matplotlib.ticker import (AutoMinorLocator, MultipleLocator)
 import json
 import os
+
+#use this commands to find the available fonts, or at least, to find the folder where ttfs are stored.
+#from matplotlib import font_manager
+#font_manager.findfont("cmr10")
 
 # the following 2 lines can be replaced by only path=<INSERT_PATH_HERE>". I chose this way to avoid submitting my laptop directories to github.
 parameters = json.load(open('parameters.json'))
@@ -37,7 +45,7 @@ files_array.sort()
 
 TEST_ID=1
 #files_array=[files_array[TEST_ID],files_array[TEST_ID+50]]
-files_array=files_array[50:60]
+files_array=files_array[2:3]
 
 
 remove_from_plot=[]
@@ -64,14 +72,14 @@ STEADY_INDEX = 2
 LABEL_RIGHT_LIMIT = 3 # last element of filename standard to include in plot label
 TEST_DURATION = 20
 RECONFIGURATION = 10
+XAXIS_LOCATOR = 2 # for xticklabels. 2 for test duration 20, and 10 for test duration 60
 
 markers = ['>', '+', '.', ',', 'o', 'v', 'x', 'X', 'D', '|']
 MARKER_SIZE = 10
 MARKER_EVERY_S = 4 #add a marker to the time series every N seconds.
-PIXEL_W=800 #for plot size
-PIXEL_H=600
+PIXEL_W=640 #for plot size
+PIXEL_H=480
 px = 1/plt.rcParams['figure.dpi'] #get dpi for pixel size setting
-XAXIS_LOCATOR = 2 # for xticklabels. 2 for test duration 20, and 10 for test duration 60
 
 BANDWIDTH = 10
 TOP_BW_AXIS = 10
@@ -86,13 +94,14 @@ desired_df_columns = ['tcp.time_relative',
                       'tcp.len',
                       'tcp.window_size',
                       'tcp.analysis.retransmission',
+                      #'tcp.analysis.bytes_in_flight',
                       'tcp.analysis.ack_rtt']
 
 #factors for modifying the rolling window size of moving average
 ROLLING_FACTOR=1 # used for calculating average throughput. rolling 1 second means SMA 1, rolling N means SMA 1/N seconds
 ALPHA=0.5
 ROLLING_FACTOR_TIME_DELTA=2 # used for calculating average RTT. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
-ROLLING_FACTOR_RTT_ACK=10 # used for calculating average RTT. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
+ROLLING_FACTOR_RTT_ACK=2 # used for calculating average RTT. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
 
 ROLLING_FACTOR_LOSS = 1 #used for calculating average loss. rolling 1 second means SMA 1s, rolling N means SMA 1/N seconds
 
@@ -229,7 +238,7 @@ plotting
 
 print('-------plotting-------')
 # -----------------------------------
-# plot RTT, vertical axis in ms.
+# plot ACK RTT, vertical axis in ms.
 # -----------------------------------
 fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
@@ -239,13 +248,13 @@ for i, df in enumerate(df_array):
             df[(df['tcp.time_relative'].notna())
                & (df['tcp.analysis.ack_rtt'].notna())
                & (df['tcp.srcport']==5201)]
-            ['tcp.analysis.ack_rtt'].rolling
+            ['tcp.analysis.ack_rtt'].ewm
                             (
-                                int(len(df[(df['tcp.time_relative'].notna())
+                                span=int(len(df[(df['tcp.time_relative'].notna())
                                    & (df['tcp.analysis.ack_rtt'].notna())
                                    & (df['tcp.srcport']==5201)])/TEST_DURATION/ROLLING_FACTOR_RTT_ACK)
                             ).mean() * ms_scale_factor,
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$'+ str(i+1)),
             # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
             marker=markers[i%len(markers)],
             markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
@@ -268,17 +277,29 @@ ax1.yaxis.set_major_locator(MultipleLocator(1))
 # Change minor ticks to show every Major tick/N.
 ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
 ax1.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax1.legend(loc='upper right')
+# adjust figure width and legend position
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+else:
+    ax1.legend(loc='upper right')
 ax1.grid(which='major', color='#a3a3a3', linestyle='--')
 ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
+
+'''
+#except during congestion, this plot remains almost constant
 # -----------------------------------
 # plot TCP window size, vertical axis in KB.
 # -----------------------------------
-fig2,ax2 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        ax2.plot(
+        ax1.plot(
             df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.time_relative'],
              df[(df['tcp.time_relative'].notna())
                        & (df['tcp.analysis.ack_rtt'].notna())
@@ -288,13 +309,13 @@ for i, df in enumerate(df_array):
                     & (df['tcp.analysis.ack_rtt'].notna())
                     & (df['tcp.srcport'] == 5201)]) / TEST_DURATION / ROLLING_FACTOR_RTT_ACK)
                  ).mean() / kbps_scale_factor ,
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$'+ str(i+1)),
             # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
             marker=markers[i%len(markers)],
             markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
             markersize=MARKER_SIZE
         )
-ax2.set(title=(filename + " - Rcv Window size"),
+ax1.set(title=(filename + " - Rcv Window size"),
         xlabel="t (s)",
         ylabel="Rcv Win (KB)",
         ylim=[2500,3200],
@@ -302,115 +323,187 @@ ax2.set(title=(filename + " - Rcv Window size"),
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-ax2.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax2.yaxis.set_major_locator(MultipleLocator(200))
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(200))
 # Change minor ticks to show every Major tick/N.
-ax2.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax2.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax2.legend(loc='lower right')
-ax2.grid(which='major', color='#a3a3a3', linestyle='--')
-ax2.grid(which='minor', color='#CCCCCC', linestyle=':')
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(5))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+else:
+    ax1.legend(loc='lower right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
+'''
 
 
 
+'''
 # -----------------------------------
-# plot throughput v1 window size / 0.5*rtt
+# plot TCP bytes in flight, vertical axis in KB.
 # -----------------------------------
-fig3,ax3 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        ax3.plot(
-            df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.time_relative'],
+        ax1.plot(
+            df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.bytes_in_flight'].notna()) & (df['tcp.dstport']==5201)]['tcp.time_relative'],
+             df[(df['tcp.time_relative'].notna())
+                       & (df['tcp.analysis.bytes_in_flight'].notna())
+                       & (df['tcp.dstport']==5201)]['tcp.analysis.bytes_in_flight'].rolling
+                 (
+                    int(len(df[(df['tcp.time_relative'].notna())
+                    & (df['tcp.analysis.bytes_in_flight'].notna())
+                    & (df['tcp.dstport'] == 5201)]) / TEST_DURATION / ROLLING_FACTOR_RTT_ACK)
+                 ).mean() / kbps_scale_factor ,
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$'+ str(i+1)),
+            # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
+            marker=markers[i%len(markers)],
+            markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
+            markersize=MARKER_SIZE
+        )
+print("len bytes in flight: "
+      + str(len(df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.bytes_in_flight'].notna()) & (df['tcp.dstport']==5201)]['tcp.time_relative'])))
+ax1.set(title=(filename + " - Bytes sent"),
+        xlabel="t (s)",
+        ylabel="Bytes sent (KB)",
+        ylim=[10,3200],
+        xlim=[1.1,TEST_DURATION],
+        )
+# Change major ticks to show every 20.
+# https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(200))
+# Change minor ticks to show every Major tick/N.
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(5))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+else:
+    ax1.legend(loc='lower right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
+'''
+
+
+
+'''
+#tricky, ack_rtt and bytes_in_flight are not in the same index of time_relative. Need to interpolate. 
+#Calculated throughput is not the same as the one calculated with other throughput plot. 
+# -----------------------------------
+# plot throughput v1 bytes in flight / rtt
+# -----------------------------------
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+for i, df in enumerate(df_array):
+    if i not in remove_from_plot:
+        ax1.plot(
+            #df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.time_relative'],
             #8* df[(df['tcp.time_relative'].notna())
             #           & (df['tcp.analysis.ack_rtt'].notna())
             #           & (df['tcp.srcport']==5201)]['tcp.window_size'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_TIME_DELTA)).mean() / kbps_scale_factor ,
-
-            8 * ((df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.window_size'].ewm(span=
-                         int(len(df[(df['tcp.time_relative'].notna())
-                                & (df['tcp.analysis.ack_rtt'].notna())
-                                & (df['tcp.srcport'] == 5201)]) / TEST_DURATION / ROLLING_FACTOR_RTT_ACK)
-                        ).mean()) /
-                (df[(df['tcp.time_relative'].notna()) & (df['tcp.analysis.ack_rtt'].notna()) & (df['tcp.srcport']==5201)]['tcp.analysis.ack_rtt'].ewm(span=
-                         int(len(df[(df['tcp.time_relative'].notna())
-                                & (df['tcp.analysis.ack_rtt'].notna())
-                                & (df['tcp.srcport'] == 5201)]) / TEST_DURATION / ROLLING_FACTOR_RTT_ACK)
-                        ).mean())) / 2 / Gbs_scale_factor,
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            df['tcp.time_relative'],
+            8 * ((df['tcp.analysis.bytes_in_flight'].interpolate(method='linear',maxgap=2).ewm(span=int(rolling_sma_window_array[i] / ROLLING_FACTOR_TIME_DELTA)).mean())/
+                 (df['tcp.analysis.ack_rtt'].interpolate(method='linear',maxgap=2).ewm(span=int(rolling_sma_window_array[i] / ROLLING_FACTOR_TIME_DELTA)).mean())) /
+                 Gbs_scale_factor,
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$'+ str(i+1)),
             # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
             marker=markers[i%len(markers)],
             markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
             markersize=MARKER_SIZE
         )
 
-ax3.set(title=(filename + " - Throughput (WND/RTT)"),
+ax1.set(title=(filename + " - Throughput (Bytes out / RTT)"),
         xlabel="t (s)",
         ylabel="Throughput (Gbps)",
-        ylim=[0,15],
+        ylim=[0,11],
         xlim=[1.1,TEST_DURATION],
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-ax3.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax3.yaxis.set_major_locator(MultipleLocator(2))
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(2))
 # Change minor ticks to show every Major tick/N.
-ax3.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax3.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax3.legend(loc='lower right')
-ax3.grid(which='major', color='#a3a3a3', linestyle='--')
-ax3.grid(which='minor', color='#CCCCCC', linestyle=':')
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(5))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+else:
+    ax1.legend(loc='lower right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
+'''
 
 
 # -----------------------------------
 # plot tcp.time_delta, iperf data rate, vertical axis in ms.
 # -----------------------------------
-fig4,ax4 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        ax4.plot(
+        ax1.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR_TIME_DELTA)).mean() * ms_scale_factor,
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|'+ str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$'+ str(i+1)),
             # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
             marker=markers[i%len(markers)],
             markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
             markersize=MARKER_SIZE
         )
-ax4.set(title=(filename + " - dt"),
+ax1.set(title=(filename + " - Packet $\Delta$t"),
         xlabel="t (s)",
-        ylabel="dt (ms)",
+        ylabel="$\Delta$t (ms)",
         ylim=[0,0.2],
         xlim=[1.1,TEST_DURATION],
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-ax4.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax4.yaxis.set_major_locator(MultipleLocator(0.05))
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(0.05))
 # Change minor ticks to show every Major tick/N.
-ax4.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax4.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax4.legend(loc='upper right')
-ax4.grid(which='major', color='#a3a3a3', linestyle='--')
-ax4.grid(which='minor', color='#CCCCCC', linestyle=':')
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(5))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+else:
+    ax1.legend(loc='upper right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
 
 # -----------------------------------
 # plot TCP payload length - SMA 1 second
 # -----------------------------------
-fig5,ax5 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 # plt.scatter(df2['tcp.time_relative'], 8*(df2['tcp.len'].rolling(1000).mean()))
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
         #plt.scatter(df['tcp.time_relative'], (df['tcp.len']), label='test ' + str(i))
-        ax5.plot(
+        ax1.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean() / kbps_scale_factor),
             #label=files_array[i]
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
         )
-ax5.set(title=(filename + " - TCP payload size"),
+ax1.set(title=(filename + " - TCP payload size"),
         xlabel="t (s)",
         ylabel="TCP payload (KB)",
         ylim=[0,60],
@@ -418,14 +511,21 @@ ax5.set(title=(filename + " - TCP payload size"),
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-ax5.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax5.yaxis.set_major_locator(MultipleLocator(10))
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(10))
 # Change minor ticks to show every Major tick/N.
-ax5.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax5.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax5.legend(loc='lower left')
-ax5.grid(which='major', color='#a3a3a3', linestyle='--')
-ax5.grid(which='minor', color='#CCCCCC', linestyle=':')
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(5))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+else:
+    ax1.legend(loc='lower left')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
 
 
@@ -439,7 +539,7 @@ for i, df in enumerate(df_array):
     if i not in remove_from_plot:
         plt.scatter(df['tcp.time_relative'], (df['tcp.len']),
                     #label=files_array[i]
-                    label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1))
+                    label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1))
                     )
         #plt.plot(
         #    df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
@@ -460,12 +560,12 @@ plt.legend(loc='lower left')
 # -----------------------------------
 # plot Throughput as the ratio of the moving average of TCP segment length / dt
 # -----------------------------------
-fig6,ax6 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 # create a new entry in the dataframe for the throughput with Moving Average
 # https://www.geeksforgeeks.org/how-to-calculate-moving-average-in-a-pandas-dataframe/
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
-        ax6.plot(
+        ax1.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean()) /
             #    (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].rolling(int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean())) / Gbs_scale_factor,
@@ -473,13 +573,13 @@ for i, df in enumerate(df_array):
               (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(span=int(rolling_sma_window_array[i]/ROLLING_FACTOR)).mean())) / Gbs_scale_factor,
             #8 * ((df[df['tcp.time_relative'].notna()]['tcp.len'].ewm(alpha=ALPHA).mean()) /
             #     (df[df['tcp.time_relative'].notna()]['tcp.time_delta'].ewm(alpha=ALPHA).mean())) / Gbs_scale_factor,
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
         )
 
-ax6.set(title=(filename + " - Throughput TCP payload/dt"),
+ax1.set(title=(filename + r" - Throughput $\frac{TCP\ payload}{\Delta t}$ "),
         xlabel="t (s)",
         ylabel="Throughput (Gbps)",
         ylim=[BOTTOM_BW_AXIS,TOP_BW_AXIS],
@@ -487,31 +587,38 @@ ax6.set(title=(filename + " - Throughput TCP payload/dt"),
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-ax6.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax6.yaxis.set_major_locator(MultipleLocator(2))
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(2))
 # Change minor ticks to show every Major tick/N.
-ax6.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax6.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax6.legend(loc='lower right')
-ax6.grid(which='major', color='#a3a3a3', linestyle='--')
-ax6.grid(which='minor', color='#CCCCCC', linestyle=':')
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(5))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+else:
+    ax1.legend(loc='lower right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
 
 # -----------------------------------
 # plot link unavailability based on discontinuities of TCP segment length data
 # -----------------------------------
-fig7,ax7 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     df['link_unavailable'] = df['tcp.time_relative'].diff()
     if i not in remove_from_plot:
         # .diff returns the difference between previous row by default, useful to find all the discontinuities in time
-        ax7.plot(df['tcp.time_relative'],
+        ax1.plot(df['tcp.time_relative'],
                     df['link_unavailable'],
-                    label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                    label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
                     marker=markers[i % len(markers)],
                     markersize=MARKER_SIZE
                     )
-ax7.set(title=(filename + " - Link unavailability"),
+ax1.set(title=(filename + " - Link unavailability"),
         xlabel="t (s)",
         ylabel="Link unavailability (s)",
         ylim=[0.02,1],
@@ -519,14 +626,21 @@ ax7.set(title=(filename + " - Link unavailability"),
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-ax7.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax7.yaxis.set_major_locator(MultipleLocator(0.2))
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(0.2))
 # Change minor ticks to show every Major tick/N.
-ax7.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax7.yaxis.set_minor_locator(AutoMinorLocator(4))
-ax7.legend(loc='upper right')
-ax7.grid(which='major', color='#a3a3a3', linestyle='--')
-ax7.grid(which='minor', color='#CCCCCC', linestyle=':')
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(4))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+else:
+    ax1.legend(loc='upper right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
 # =============================================================================================================================
 # Calculate packets sent, tcp.analysis.retransmissions and packet loss ratio
@@ -580,7 +694,7 @@ for i, pkt_sent in enumerate(pkt_sent_array_series):
     if i not in remove_from_plot:
         plt.plot(pkt_sent,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S ,
                  markersize=MARKER_SIZE
@@ -604,7 +718,7 @@ for i, pkt_retransmit in enumerate(pkt_retransmit_array_series):
     if i not in remove_from_plot:
         plt.plot(pkt_retransmit,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S,
                  markersize=MARKER_SIZE
@@ -620,17 +734,17 @@ plt.legend(loc='upper left')
 # -----------------------------------
 # Plot packet loss metric
 # -----------------------------------
-fig8,ax8 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     if i not in remove_from_plot:
-        ax8.plot(pkt_loss_ratio,
+        ax1.plot(pkt_loss_ratio,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S,
                  markersize=MARKER_SIZE
                  )
-ax8.set(title=(filename + " - packet loss ratio"),
+ax1.set(title=(filename + " - Packet loss ratio"),
         xlabel="t (s)",
         ylabel="%",
         ylim=[-0.1,10],
@@ -638,14 +752,21 @@ ax8.set(title=(filename + " - packet loss ratio"),
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-ax8.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax8.yaxis.set_major_locator(MultipleLocator(2))
+ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(2))
 # Change minor ticks to show every Major tick/N.
-ax8.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax8.yaxis.set_minor_locator(AutoMinorLocator(4))
-ax8.legend(loc='upper right')
-ax8.grid(which='major', color='#a3a3a3', linestyle='--')
-ax8.grid(which='minor', color='#CCCCCC', linestyle=':')
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(4))
+if len(files_array)>2:
+    # Shrink current axis by 20%
+    fig1.set_figwidth(1.3 * PIXEL_W * px)
+    box = ax1.get_position()
+    ax1.set_position([box.x0, box.y0, box.width * 0.7, box.height])
+    ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+else:
+    ax1.legend(loc='upper right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
 '''
 plt.figure()
@@ -654,7 +775,7 @@ for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     if i not in remove_from_plot:
         plt.stem(pkt_loss_ratio,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
                  #marker=markers[i % len(markers)],
                  #markevery=MARKER_EVERY_S,
                  #markersize=MARKER_SIZE
@@ -671,7 +792,7 @@ plt.legend(loc='upper left')
 # -----------------------------------
 # Plot packet loss as box plot
 # -----------------------------------
-fig9,ax9 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 df_loss=[[],[],[],[]]
 for i, pkt_loss_ratio in enumerate(pkt_loss_ratio_array_series):
     #if i not in remove_from_plot:
@@ -697,22 +818,22 @@ if 'mbb' in files_array[0]:
     print('packet loss mbb 1 t=5 len: ' + str(len(df_loss[1])))
     print('packet loss mbb 2 t=15 len: ' + str(len(df_loss[3])))
     if BOXPLOT_MBB_SPACED:
-        ax9.boxplot(df_loss)
-        ax9.set_xticklabels(['steady', 't=5s', 't=10s', 't=15s'])
+        ax1.boxplot(df_loss)
+        ax1.set_xticklabels(['steady', 't=5s', 't=10s', 't=15s'])
     else:
-        ax9.boxplot([df_loss[0], df_loss[2]])
-        ax9.set_xticklabels(['steady', 't=10s'])
+        ax1.boxplot([df_loss[0], df_loss[2]])
+        ax1.set_xticklabels(['steady', 't=10s'])
     #plt.ylim(top=2, bottom=-0.1)
 else:
-    ax9.boxplot([df_loss[0], df_loss[2]])
-    ax9.set_xticklabels(['steady', 't=10s'])
+    ax1.boxplot([df_loss[0], df_loss[2]])
+    ax1.set_xticklabels(['steady', 't=10s'])
     #plt.ylim(top=20, bottom=-0.1)
 
 print('Loss statistics: ')
 print(pd.Series(df_loss[2]).describe())
 
 
-ax9.set(title=(filename + " - packet loss ratio"),
+ax1.set(title=(filename + " - Packet loss summary"),
         xlabel="t (s)",
         ylabel="%",
         ylim=[-0.1,10],
@@ -720,20 +841,20 @@ ax9.set(title=(filename + " - packet loss ratio"),
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-#ax9.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax9.yaxis.set_major_locator(MultipleLocator(2))
+#ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(2))
 # Change minor ticks to show every Major tick/N.
-#ax9.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax9.yaxis.set_minor_locator(AutoMinorLocator(4))
-ax9.legend(loc='upper right')
-ax9.grid(which='major', color='#a3a3a3', linestyle='--')
-ax9.grid(which='minor', color='#CCCCCC', linestyle=':')
+#ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(4))
+ax1.legend(loc='upper right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
 # -----------------------------------
 # Link unavailability as box plot
 # -----------------------------------
 df_link_unavailable=[[],[],[],[]]
-fig10,ax10 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
 for i, df in enumerate(df_array):
     #if i not in remove_from_plot:
     df = df[df['tcp.time_relative'].notna()] # very important line. Otherwise an exception can be raised.
@@ -775,41 +896,41 @@ for i, df in enumerate(df_array):
 if 'mbb' in files_array[0]:
     if BOXPLOT_MBB_SPACED:
         # t=5, t=10, t=15
-        ax10.boxplot(df_link_unavailable)
-        ax10.set_xticklabels(['steady', 't=5s', 't=10s', 't=15s'])
+        ax1.boxplot(df_link_unavailable)
+        ax1.set_xticklabels(['steady', 't=5s', 't=10s', 't=15s'])
         #print("link unavailable t=5 len: " + str(len(df_link_unavailable[1])))  # for debugging purposes
         #print("link unavailable t=15 len: " + str(len(df_link_unavailable[3])))  # for debugging purposes
     else:
         # t=steady,t=10
-        ax10.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
-        ax10.set_xticklabels(['steady', 't=10s'])
+        ax1.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
+        ax1.set_xticklabels(['steady', 't=10s'])
 
 
     #plt.ylim(top=1, bottom=-0.1)
 else:
-    ax10.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
-    ax10.set_xticklabels(['steady', 't=10s'])
+    ax1.boxplot([df_link_unavailable[0], df_link_unavailable[2]])
+    ax1.set_xticklabels(['steady', 't=10s'])
     #plt.ylim(top=1, bottom=-0.1)
 #plt.ylim(top=1, bottom=-0.05)
 
 print('Link unavailable statistics: ')
 print(pd.Series(df_link_unavailable[2]).describe())
 
-ax10.set(title=(filename + " - link unavailability"),
+ax1.set(title=(filename + " - Link unavailability summary"),
         ylabel="t (s)",
         ylim=[-0.1,1],
         #xlim=[1.1,TEST_DURATION-1],
         )
 # Change major ticks to show every 20.
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
-#ax9.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
-ax10.yaxis.set_major_locator(MultipleLocator(0.2))
+#ax1.xaxis.set_major_locator(MultipleLocator(XAXIS_LOCATOR))
+ax1.yaxis.set_major_locator(MultipleLocator(0.2))
 # Change minor ticks to show every Major tick/N.
-#ax9.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax10.yaxis.set_minor_locator(AutoMinorLocator(4))
-#ax9.legend(loc='upper right')
-ax10.grid(which='major', color='#a3a3a3', linestyle='--')
-ax10.grid(which='minor', color='#CCCCCC', linestyle=':')
+#ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.yaxis.set_minor_locator(AutoMinorLocator(4))
+#ax1.legend(loc='upper right')
+ax1.grid(which='major', color='#a3a3a3', linestyle='--')
+ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 
 
 '''
@@ -824,7 +945,7 @@ for i, pkt_sent in enumerate(pkt_sent_array_series):
         #updated formula: pkt_sent (packets/second) * effective TCP length (KBytes/packet) * 8 (bits/Byte) / Gbs_scale_factor
         plt.plot(pkt_sent * (df[df['tcp.time_relative'].notna()]['tcp.len'].rolling(rolling_sma_window_array[i]).mean()).mean() * 8 / Gbs_scale_factor ,
                  #label=files_array[i]
-                 label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+                 label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
                  marker=markers[i % len(markers)],
                  markevery=MARKER_EVERY_S,
                  markersize=MARKER_SIZE
@@ -850,7 +971,7 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['loss'],
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
@@ -878,7 +999,7 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['tcp.analysis.retransmission'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).sum(),
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
@@ -907,7 +1028,7 @@ for i, df in enumerate(df_array):
         plt.plot(
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'],
             df[df['tcp.time_relative'].notna()]['tcp.time_relative'].rolling(int(rolling_sma_window_array[i] / ROLLING_FACTOR_LOSS)).count(),
-            label=('|'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '|' + str(i+1)),
+            label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$' + str(i+1)),
             marker=markers[i % len(markers)],
             markevery=MARKER_EVERY_S * rolling_sma_window_array[i],
             markersize=MARKER_SIZE
