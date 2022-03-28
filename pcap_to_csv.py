@@ -27,23 +27,31 @@ for pcap_file in os.listdir(path):
      # analyze only pcap files
      if pcap_file.endswith(".pcap"):
          #os.path.splitext returns in  position 0 the fileneme, in position 1 the extension
-         #TODO check if the csv file already exists.
          #if (os.path.splitext(pcap_file)[0] + '.csv') in os.listdir(path):
          #   filename = os.path.splitext(pcap_file)[0] + '.csv'
          filename = os.path.splitext(pcap_file)[0] + '.csv'
          # write the csv file if not already in the folder.
          if filename not in os.listdir(path):
-             args = ['tshark', '-r', os.path.join(path, pcap_file),
-                     '-T', 'fields', '-E', 'header=y', '-E', 'separator=,', '-E', 'quote=d', '-E', 'occurrence=a',
-                     '-e', 'ip.ttl', '-e', 'ip.src', '-e', 'ip.dst',
-                     '-e', 'tcp.srcport', '-e', 'tcp.dstport', '-e', 'tcp.seq', '-e', 'tcp.ack',
-                     '-e', 'tcp.len', '-e', 'tcp.seq', '-e', 'tcp.nxtseq',
-                     '-e', 'tcp.time_delta', '-e', 'tcp.time_relative', '-e', 'tcp.stream',
-                     '-e', 'tcp.analysis.retransmission', '-e', 'tcp.analysis.lost_segment',
-                     '-e', 'tcp.window_size',
-                     '-e', 'tcp.analysis.ack_rtt',
-                     '-e', 'tcp.analysis.bytes_in_flight',
-                     '-q']
+             if 'udp' in filename:
+                 args = ['tshark', '-r', os.path.join(path, pcap_file),
+                         '-T', 'fields', '-E', 'header=y', '-E', 'separator=,', '-E', 'quote=d', '-E', 'occurrence=a',
+                         '-e', 'ip.ttl', '-e', 'ip.src', '-e', 'ip.dst',
+                         '-e', 'udp.srcport', '-e', 'udp.dstport',
+                         '-e', 'udp.length',
+                         '-e', 'udp.time_delta', '-e', 'udp.time_relative',
+                         '-q']
+             else:
+                 args = ['tshark', '-r', os.path.join(path, pcap_file),
+                         '-T', 'fields', '-E', 'header=y', '-E', 'separator=,', '-E', 'quote=d', '-E', 'occurrence=a',
+                         '-e', 'ip.ttl', '-e', 'ip.src', '-e', 'ip.dst',
+                         '-e', 'tcp.srcport', '-e', 'tcp.dstport', '-e', 'tcp.seq', '-e', 'tcp.ack',
+                         '-e', 'tcp.len', '-e', 'tcp.seq', '-e', 'tcp.nxtseq',
+                         '-e', 'tcp.time_delta', '-e', 'tcp.time_relative', '-e', 'tcp.stream',
+                         '-e', 'tcp.analysis.retransmission', '-e', 'tcp.analysis.lost_segment',
+                         '-e', 'tcp.window_size',
+                         '-e', 'tcp.analysis.ack_rtt',
+                         '-e', 'tcp.analysis.bytes_in_flight',
+                         '-q']
              with open(path+filename,"w") as outfile:
                  print("writing: " + filename)
                  subprocess.run(args, stdout=outfile, check=True)
