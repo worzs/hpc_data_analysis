@@ -43,9 +43,9 @@ for file in os.listdir(path):
         files_array.append(file)
 files_array.sort()
 
-TEST_ID=1
+#TEST_ID=1
 #files_array=[files_array[TEST_ID],files_array[TEST_ID+50]]
-files_array=files_array[2:3]
+#files_array=files_array[50:100]
 
 
 remove_from_plot=[]
@@ -57,9 +57,9 @@ no_files = 1
 #the following two parameters help when more than 1 experiment is going to be analyzed at the same bandwidth.
 filename = ''
 if 'MBB' in path:
-    filename+= 'Make before break v3'
+    filename+= 'MBB v3'
 elif 'OST' in path:
-    filename += 'Optical switching v1'
+    filename += 'OST v3'
 
 if 'Dual' in path:
     filename+=' - Bandwidth steering '
@@ -69,7 +69,7 @@ extension = '.csv'
 
 BOXPLOT_MBB_SPACED = False
 STEADY_INDEX = 2
-LABEL_RIGHT_LIMIT = 3 # last element of filename standard to include in plot label
+LABEL_RIGHT_LIMIT = 2 # last element of filename standard to include in plot label
 TEST_DURATION = 20
 RECONFIGURATION = 10
 XAXIS_LOCATOR = 2 # for xticklabels. 2 for test duration 20, and 10 for test duration 60
@@ -257,7 +257,9 @@ for i, df in enumerate(df_array):
             label=('$\|$'.join(files_array[i].split(SPLIT_FILENAME_CHAR)[0:LABEL_RIGHT_LIMIT]) + '$\|$'+ str(i+1)),
             # https://www.geeksforgeeks.org/how-to-add-markers-to-a-graph-plot-in-matplotlib-with-python/
             marker=markers[i%len(markers)],
-            markevery=MARKER_EVERY_S*rolling_sma_window_array[i],
+            markevery=MARKER_EVERY_S*int(len(df[(df['tcp.time_relative'].notna())
+                                   & (df['tcp.analysis.ack_rtt'].notna())
+                                   & (df['tcp.srcport']==5201)])/TEST_DURATION),
             markersize=MARKER_SIZE
         )
         #print("rolling sma: " + str(rolling_sma_window_array[i]))
