@@ -1,7 +1,7 @@
 '''
 William Orozco
 worozco at ucdavis dot edu
-January 2021
+January 2022
 
 Script to return RTT, throughput and packet loss based on a pcap file previously exported as csv with wireshark.
 

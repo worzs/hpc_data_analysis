@@ -1,15 +1,13 @@
 '''
 William Orozco
 worozco at ucdavis dot edu
-January 2021
+March 2022
 
-Script to analyze L3 switching time in
-Plot multiple series in one plot, stateless approach with matplotlib
-https://realpython.com/python-matplotlib-guide/
+Script to analyze L3 switching time of ToR
 
 TO BE EXECUTED in any computer/server where the csv file is stored.
-Required columns: ip.src, ip.dst, tcp.stream, tcp.time_relative, tcp.time_delta, tcp.len, tcp.analysis.retransmission
-
+Save a parameter.json file, with the path of the csvfile.
+{"datapath":<path>}
 '''
 
 import pandas as pd
@@ -18,7 +16,7 @@ matplotlib.use('Qt5Agg', force=True) #fix for use qt5agg backend for matplotlib.
 # https://python-graph-gallery.com/custom-fonts-in-matplotlib
 matplotlib.rcParams['font.family'] = 'cmr10' #for labels, titles, and other text
 matplotlib.rcParams['mathtext.fontset'] = 'cm'
-matplotlib.rcParams['font.size'] = 13
+matplotlib.rcParams['font.size'] = 11
 import matplotlib.pyplot as plt
 from matplotlib.ticker import (AutoMinorLocator, MultipleLocator)
 import json
@@ -27,7 +25,7 @@ import os
 
 # the following 2 lines can be replaced by only path=<INSERT_PATH_HERE>".
 parameters = json.load(open('parameters.json'))
-path = parameters["datapath"]
+path = parameters["datapath_udp"]
 
 files_array=[]
 #for analyzing csv files in path
@@ -43,7 +41,7 @@ remove_from_plot=[]
 #remove_from_plot.extend(list(range(0,10)))
 remove_from_plot.extend(list(range(10,50)))
 
-filename='EPS Switching delay'
+filename='EPS L3 Switching delay'
 Gbs_scale_factor = 1000000000
 ms_scale_factor = 1000
 kbps_scale_factor = 1000
@@ -61,6 +59,7 @@ MARKER_EVERY_S = 4 #add a marker to the time series every N seconds.
 PIXEL_W=640 #for plot size
 PIXEL_H=480
 px = 1/plt.rcParams['figure.dpi'] #get dpi for pixel size setting
+DPI = 300
 
 # read files and return the dataframe with the required columns
 def read_files(files_array, path=path):
@@ -83,7 +82,8 @@ print('-------plotting-------')
 # -----------------------------------
 # plot df['udp.time_delta'].diff(), vertical axis in us.
 # -----------------------------------
-fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+#fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(6,5),dpi=DPI)
 for i, df in enumerate(df_array):
     if i not in remove_from_plot:
         ax1.plot(
@@ -96,12 +96,13 @@ for i, df in enumerate(df_array):
             markersize=MARKER_SIZE
         )
 ax1.set(title=(filename + " - Packet $\Delta$t"),
-        xlabel="t (s)",
-        ylabel="$\Delta$ t (ms)",
+        xlabel="Time [s]",
+        ylabel="$\Delta$ t [ms]",
         ylim=[2.2,30],
         #xlim=[1.1,TEST_DURATION],
         xlim=[8.9,11.1],
         )
+fig1.set_tight_layout(True)
 # Change major ticks
 # https://stackoverflow.com/questions/24943991/change-grid-interval-and-specify-tick-labels-in-matplotlib
 ax1.xaxis.set_major_locator(MultipleLocator(1))
@@ -128,7 +129,8 @@ ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 # Link unavailability as box plot
 # -----------------------------------
 df_link_unavailable=[]
-fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+#fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
+fig1,ax1 = plt.subplots(figsize=(6,5),dpi=DPI)
 for i, df in enumerate(df_array):
     #df = df[df['udp.time_relative'].notna()]  # very important line. Otherwise an exception can be raised.
 
@@ -144,6 +146,7 @@ for i, df in enumerate(df_array):
 
 
 # t=steady,t=10
+#fig1.set_tight_layout(True)
 ax1.boxplot(df_link_unavailable)
 ax1.set_xticklabels(['t=10s'])
 
@@ -151,7 +154,7 @@ print('Link unavailable statistics: ')
 print(pd.Series(df_link_unavailable).describe())
 
 ax1.set(title=(filename + " - Link unavailability summary"),
-        ylabel="t (ms)",
+        ylabel="Time [ms]",
         ylim=[0,30],
         #xlim=[1.1,TEST_DURATION-1],
         )
