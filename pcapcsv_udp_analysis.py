@@ -130,7 +130,7 @@ ax1.grid(which='minor', color='#CCCCCC', linestyle=':')
 # -----------------------------------
 df_link_unavailable=[]
 #fig1,ax1 = plt.subplots(figsize=(PIXEL_W*px, PIXEL_H*px))
-fig1,ax1 = plt.subplots(figsize=(6,5),dpi=DPI)
+fig1,ax1 = plt.subplots(figsize=(5,4),dpi=DPI)
 for i, df in enumerate(df_array):
     #df = df[df['udp.time_relative'].notna()]  # very important line. Otherwise an exception can be raised.
 
